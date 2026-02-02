@@ -1,5 +1,4 @@
 import streamlit as st
-from config import MASTER_ADMIN
 from database.connection import read_db
 from modules import order_ui, material_manager, user_manager
 from styles import set_custom_css
@@ -42,4 +41,5 @@ else:
     if choice == "📊 Журнал": order_ui.display_orders_list()
     elif choice == "📝 Нове замовлення": order_ui.render_order_form()
     elif choice == "🏗️ Склад": material_manager.show_manager()
+
     elif choice == "👥 Персонал": user_manager.show_user_editor()
