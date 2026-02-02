@@ -3,7 +3,7 @@ import pandas as pd
 import io
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
+from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
 # --- КОНФІГУРАЦІЯ ---
 ORDERS_CSV_ID = "1Ws7rL1uyWcYbLeXsmqmaijt98Gxo6k3i"
@@ -38,10 +38,19 @@ def load_data():
 
 def save_data(df):
     service = get_drive_service()
-    csv_buffer = io.StringIO()
-    df.to_csv(csv_buffer, index=False)
-    media = MediaFileUpload(io.BytesIO(csv_buffer.getvalue().encode()), mimetype='text/csv')
-    service.files().update(fileId=ORDERS_CSV_ID, media_body=media).execute()
+    if not service: return
+    try:
+        # Перетворюємо DataFrame в CSV
+        csv_buffer = io.BytesIO()
+        df.to_csv(io.TextIOWrapper(csv_buffer, encoding='utf-8'), index=False)
+        csv_buffer.seek(0)
+        
+        # Використовуємо MediaIoBaseUpload для роботи з BytesIO
+        media = MediaIoBaseUpload(csv_buffer, mimetype='text/csv', resumable=True)
+        service.files().update(fileId=ORDERS_CSV_ID, media_body=media).execute()
+        st.toast("Синхронізовано з хмарою ✅")
+    except Exception as e:
+        st.error(f"Помилка збереження: {e}")
 
 # --- ГОЛОВНИЙ ІНТЕРФЕЙС ---
 st.title("🏭 GETMANN Pro")
@@ -58,29 +67,28 @@ with tabs[0]:
     display_df = df[df.apply(lambda r: search.lower() in str(r.values).lower(), axis=1)] if search else df
 
     for idx, row in display_df.iterrows():
-        # Визначаємо колір заголовка залежно від статусу
         status = row['Готовність']
-        status_emoji = "⚪"
-        if status == "В роботі": status_emoji = "🔵"
-        if status == "Готово": status_emoji = "🟢"
+        # Кольорова індикація
+        if status == "В роботі": color = "primary"
+        elif status == "Готово": color = "success"
+        else: color = "secondary"
         
         with st.container(border=True):
             col_info, col_actions = st.columns([3, 1])
             
             with col_info:
-                st.markdown(f"### {status_emoji} {row['Клієнт']} (ID: {row['ID']})")
+                st.subheader(f"{row['Клієнт']} (ID: {row['ID']})")
                 st.write(f"**Товари:** {row['Товари']}")
                 
-                # Поле для редагування коментаря прямо в картці
-                new_comment = st.text_input("Коментар до замовлення", value=row['Коментар'], key=f"comm_{idx}")
+                # Редагування коментаря
+                new_comment = st.text_input("Редагувати коментар", value=row['Коментар'], key=f"comm_{idx}")
                 if new_comment != row['Коментар']:
                     df.at[idx, 'Коментар'] = new_comment
                     save_data(df)
-                    st.toast("Коментар оновлено")
 
             with col_actions:
-                st.write("**Статус:**")
-                # КНОПКИ ЯК У ПОПЕРЕДНІЙ ВЕРСІЇ
+                st.write(f"**Статус: {status}**")
+                # Кнопки швидкої зміни статусу
                 if st.button("🔵 В роботу", key=f"work_{idx}", use_container_width=True):
                     df.at[idx, 'Готовність'] = "В роботі"
                     save_data(df)
@@ -97,6 +105,19 @@ with tabs[0]:
                     st.rerun()
 
 with tabs[1]:
-    # (Код форми додавання залишається такий самий, як у попередній версії)
-    st.subheader("Нове замовлення")
-    # ... (код форми)
+    st.subheader("Створити нове замовлення")
+    with st.form("new_order_form"):
+        f_id = st.text_input("ID")
+        f_client = st.text_input("Клієнт")
+        f_items = st.text_area("Товари")
+        f_sum = st.number_input("Сума", min_value=0)
+        f_comment = st.text_input("Коментар")
+        
+        if st.form_submit_button("Зберегти на диск"):
+            new_row = {'ID': f_id, 'Клієнт': f_client, 'Товари': f_items, 
+                       'Сума': f_sum, 'Готовність': 'В черзі', 'Коментар': f_comment}
+            st.session_state.df = pd.concat([st.session_state.df, pd.DataFrame([new_row])], ignore_index=True)
+            save_data(st.session_state.df)
+            st.rerun()
+
+st.sidebar.button("🔄 Оновити дані", on_click=lambda: st.session_state.pop('df'))
