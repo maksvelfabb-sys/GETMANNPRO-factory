@@ -102,7 +102,7 @@ with tabs[0]:
                 c4, c5, c6 = st.columns([2, 2, 1])
                 f_ct, f_ttn, f_av = c4.text_input("Місто"), c5.text_input("ТТН"), c6.number_input("Аванс", 0.0)
                 f_cm = st.text_area("Коментар до замовлення")
-                st.write("📦 **Перший товар:**")
+                st.write("📦 **Товар:**")
                 tc1, tc2, tc3, tc4 = st.columns([3, 1, 1, 1])
                 t_n, t_a, t_q, t_p = tc1.text_input("Назва"), tc2.text_input("Арт"), tc3.number_input("К-ть", 1, step=1), tc4.number_input("Ціна", 0.0)
                 if st.form_submit_button("🚀 Створити"):
@@ -153,7 +153,7 @@ with tabs[0]:
                         e_ct, e_tt = r1c3.text_input("Місто", value=row['Місто']), r1c4.text_input("ТТН", value=row['ТТН'])
                         
                         st.write("📦 **Товари**")
-                        updated_items = []
+                        current_json_items = []
                         for i, it in enumerate(items):
                             st.markdown(f"**Товар №{i+1}**")
                             col1, col2, col3, col4, col5 = st.columns([2.5, 1, 1, 1, 1])
@@ -163,36 +163,31 @@ with tabs[0]:
                             u_p = col4.number_input("Ціна", value=safe_float(it.get('ціна')), key=f"p_{idx}_{i}")
                             u_s = col5.number_input("Сума", value=safe_float(it.get('сума')), key=f"s_{idx}_{i}")
                             
-                            # Фінансова логіка
-                            if round(u_s, 2) != round(safe_float(it.get('сума')), 2):
-                                final_p = round(u_s / u_q, 2) if u_q > 0 else 0
-                                final_s = u_s
+                            # ПЕРЕРАХУНОК ДЛЯ КОЖНОГО ТОВАРУ
+                            old_s = safe_float(it.get('сума'))
+                            if round(u_s, 2) != round(old_s, 2):
+                                f_p = round(u_s / u_q, 2) if u_q > 0 else 0.0
+                                f_s = u_s
                             else:
-                                final_p = u_p
-                                final_s = round(u_q * u_p, 2)
+                                f_p = u_p
+                                f_s = round(u_q * u_p, 2)
                             
-                            # Поле для видалення
-                            del_item = st.checkbox(f"Видалити товар №{i+1}", key=f"del_{idx}_{i}")
+                            del_item = st.checkbox(f"Видалити №{i+1}", key=f"del_{idx}_{i}")
                             if not del_item:
-                                updated_items.append({"назва": u_n, "арт": u_a, "к-ть": int(u_q), "ціна": float(final_p), "сума": float(final_s)})
+                                current_json_items.append({"назва": u_n, "арт": u_a, "к-ть": int(u_q), "ціна": float(f_p), "сума": float(f_s)})
 
-                        if st.form_submit_button("➕ Додати порожній рядок товару"):
-                            updated_items.append({"назва": "", "арт": "", "к-ть": 1, "ціна": 0.0, "сума": 0.0})
-                            # Тимчасовий апдейт в базу
+                        if st.form_submit_button("➕ Додати новий товар"):
+                            current_json_items.append({"назва": "", "арт": "", "к-ть": 1, "ціна": 0.0, "сума": 0.0})
                             mask = df['ID'] == row['ID']
-                            df.loc[mask, 'Товари_JSON'] = json.dumps(updated_items, ensure_ascii=False)
+                            df.loc[mask, 'Товари_JSON'] = json.dumps(current_json_items, ensure_ascii=False)
                             save_csv(ORDERS_CSV_ID, df); st.rerun()
 
-                        st.write("💬 **Коментар**")
+                        st.write("💬 **Коментар та Аванс**")
                         e_cm = st.text_area("Коментар", value=row['Коментар'])
                         e_av = st.number_input("Аванс", value=safe_float(row['Аванс']))
                         
-                        if st.form_submit_button("💾 Зберегти зміни"):
+                        if st.form_submit_button("💾 Зберегти все"):
                             mask = df['ID'] == row['ID']
                             df.loc[mask, ['Клієнт', 'Телефон', 'Місто', 'ТТН', 'Коментар', 'Аванс']] = [e_cl, e_ph, e_ct, e_tt, e_cm, str(e_av)]
-                            df.loc[mask, 'Товари_JSON'] = json.dumps(updated_items, ensure_ascii=False)
+                            df.loc[mask, 'Товари_JSON'] = json.dumps(current_json_items, ensure_ascii=False)
                             save_csv(ORDERS_CSV_ID, df); st.rerun()
-
-with tabs[1]:
-    if role == "Супер Адмін":
-        if st.button("🔄 Оновити дані"): st.rerun()
