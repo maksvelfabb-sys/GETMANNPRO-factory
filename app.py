@@ -1,17 +1,15 @@
 import streamlit as st
 import pandas as pd
 import io, json
-from datetime import datetime
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
+from googleapiclient.http import MediaIoBaseDownload
 
-# --- КОНФІГУРАЦІЯ (ID ВАШІ) ---
+# --- КОНФІГУРАЦІЯ ---
 ORDERS_CSV_ID = "1Ws7rL1uyWcYbLeXsmqmaijt98Gxo6k3i"
 USERS_CSV_ID = "1qwPXMqIwDATgIsYHo7us6yQgE-JyhT7f"
 FOLDER_DRAWINGS_ID = "1SQyZ6OUk9xNBMvh98Ob4zw9LVaqWRtas"
 COLS = ['ID', 'Дата', 'Клієнт', 'Телефон', 'Місто', 'ТТН', 'Товари_JSON', 'Аванс', 'Готовність', 'Коментар']
-USER_COLS = ['email', 'password', 'role']
 
 st.set_page_config(page_title="GETMANN ERP", layout="wide", page_icon="🏭")
 
@@ -37,80 +35,61 @@ def load_csv(file_id, cols):
         while not done: _, done = downloader.next_chunk()
         fh.seek(0)
         df = pd.read_csv(fh, dtype=str).fillna("")
-        for c in cols:
-            if c not in df.columns: df[c] = ""
         return df[cols]
     except: return pd.DataFrame(columns=cols)
 
 def get_drawing_link(art):
-    """Шукає файл за артикулом (наприклад, 20WS.8247) та повертає URL"""
-    if not art or pd.isna(art): return None
-    art_str = str(art).strip()
-    if art_str in ["", "nan", "None"]: return None
-    
+    """Шукає PDF файл за артикулом (наприклад, 20WS.8247)"""
+    if not art or str(art).strip() in ["", "nan"]: return None
     service = get_drive_service()
     if not service: return None
-    
     try:
-        # Пошук файлу, назва якого містить артикул
-        query = f"'{FOLDER_DRAWINGS_ID}' in parents and name contains '{art_str}' and trashed = false"
-        results = service.files().list(q=query, fields="files(webViewLink)").execute()
+        # Пошук файлу за назвою в конкретній папці
+        q = f"'{FOLDER_DRAWINGS_ID}' in parents and name contains '{str(art).strip()}' and trashed = false"
+        results = service.files().list(q=q, fields="files(id, name, webViewLink)").execute()
         files = results.get('files', [])
-        
-        if files and 'webViewLink' in files[0]:
-            return str(files[0]['webViewLink'])
+        if files:
+            # Повертаємо посилання на перегляд файлу
+            return files[0].get('webViewLink')
         return None
-    except:
-        return None
+    except: return None
 
-# --- АВТОРИЗАЦІЯ ( maksvel.fabb@gmail.com ) ---
+# --- АВТОРИЗАЦІЯ ---
 if 'auth' not in st.session_state:
     st.title("🏭 GETMANN ERP")
-    with st.container(border=True):
-        e_in = st.text_input("Логін").strip().lower()
-        p_in = st.text_input("Пароль", type="password").strip()
-        if st.button("Увійти", use_container_width=True):
-            if e_in == "maksvel.fabb@gmail.com" and p_in == "1234":
-                st.session_state.auth = {'email': e_in, 'role': 'Супер Адмін'}
-                st.rerun()
-            u_df = load_csv(USERS_CSV_ID, USER_COLS)
-            user = u_df[(u_df['email'].str.lower() == e_in) & (u_df['password'] == p_in)]
-            if not user.empty:
-                st.session_state.auth = user.iloc[0].to_dict()
-                st.rerun()
-            else: st.error("Доступ обмежено")
+    e_in = st.text_input("Логін").lower()
+    p_in = st.text_input("Пароль", type="password")
+    if st.button("Увійти"):
+        if e_in == "maksvel.fabb@gmail.com" and p_in == "1234":
+            st.session_state.auth = True
+            st.rerun()
     st.stop()
 
-# --- ЖУРНАЛ ЗАМОВЛЕНЬ ---
+# --- ЖУРНАЛ ---
 df = load_csv(ORDERS_CSV_ID, COLS)
-df_v = df.copy().iloc[::-1]
-
 st.header("📋 Журнал замовлень")
 
-for idx, row in df_v.iterrows():
-    order_id = str(row['ID'])
+for idx, row in df.iloc[::-1].iterrows():
     with st.container(border=True):
-        st.subheader(f"Замовлення №{order_id} — {row['Клієнт']}")
+        st.subheader(f"№{row['ID']} — {row['Клієнт']}")
         
-        try:
-            items = json.loads(row['Товари_JSON'])
-        except:
-            items = []
+        try: items = json.loads(row['Товари_JSON'])
+        except: items = []
         
         for i, it in enumerate(items):
-            c_info, c_btn = st.columns([3, 1])
+            col_txt, col_btn = st.columns([3, 1])
             art = str(it.get('арт', '')).strip()
-            c_info.write(f"🔹 **{it.get('назва')}** (Арт: {art}) — {it.get('к-ть')} шт.")
+            col_txt.write(f"🔹 {it.get('назва')} ({art})")
             
-            # --- ПЕРЕВІРКА ПОСИЛАННЯ ПЕРЕД СТВОРЕННЯМ КНОПКИ ---
-            link = get_drawing_link(art)
-            
-            if link and isinstance(link, str) and link.startswith("http"):
-                # Кнопка-посилання (тільки якщо URL валідний)
-                c_btn.link_button("📕 PDF Креслення", url=link, use_container_width=True, key=f"lk_{order_id}_{i}")
+            # --- БЕЗПЕЧНИЙ ВИКЛИК ПОСИЛАННЯ ---
+            if art:
+                link = get_drawing_link(art)
+                if link:
+                    # Тільки якщо посилання існує і це рядок, малюємо кнопку
+                    col_btn.link_button("📕 ВІДКРИТИ PDF", url=str(link), use_container_width=True, key=f"btn_{row['ID']}_{i}")
+                else:
+                    col_btn.button("⚠️ Немає PDF", disabled=True, use_container_width=True, key=f"none_{row['ID']}_{i}")
             else:
-                # Звичайна неактивна кнопка (якщо файлу немає або помилка)
-                c_btn.button("📕 Не знайдено", disabled=True, use_container_width=True, key=f"no_{order_id}_{i}")
+                col_btn.button("❌ Без арту", disabled=True, use_container_width=True, key=f"empty_{row['ID']}_{i}")
 
-        if row['Коментар']:
-            st.info(f"💬 {row['Коментар']}")
+        st.caption(f"Статус: {row['Готовність']}")
