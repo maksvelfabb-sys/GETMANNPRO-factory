@@ -8,7 +8,7 @@ from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
 # --- КОНФІГУРАЦІЯ ---
 ORDERS_CSV_ID = "1Ws7rL1uyWcYbLeXsmqmaijt98Gxo6k3i"
-USERS_CSV_ID = "1FDWndpOgRX21lwHk19SUoBfKyMj0K1Zc"
+USERS_CSV_ID = "1ibrEFKOyvt5xgC_vSMhvDmNxdO1pVYfr4a-TqgJM82Y"
 FOLDER_DRAWINGS_ID = "1SQyZ6OUk9xNBMvh98Ob4zw9LVaqWRtas"
 
 st.set_page_config(page_title="GETMANN ERP", layout="wide", page_icon="🏭")
@@ -179,3 +179,4 @@ with tabs[1]:
         st.code(dict(st.secrets["gcp_service_account"])["client_email"])
         ed_u = st.data_editor(st.session_state.users_df, num_rows="dynamic")
         if st.button("💾 Зберегти базу користувачів"): save_csv(USERS_CSV_ID, ed_u)
+
