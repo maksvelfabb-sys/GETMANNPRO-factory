@@ -50,7 +50,6 @@ def save_csv(file_id, df):
         st.error(f"Помилка Drive: {e}")
 
 def get_drawing_link(art):
-    """Пошук PDF креслення за артикулом"""
     if not art or len(str(art)) < 2: return None
     service = get_drive_service()
     try:
@@ -66,21 +65,13 @@ if 'users_df' not in st.session_state:
 
 u_df = st.session_state.users_df
 
-# Перевірка профілю Максима
-if u_df[u_df['email'] == 'maksvel.fabb@gmail.com'].empty:
-    if st.button("🔥 АКТИВУВАТИ МАКСИМА (Супер Адмін)"):
-        new_boss = pd.DataFrame([{'email': 'maksvel.fabb@gmail.com', 'password': '1234', 'role': 'Супер Адмін', 'name': 'Максим'}])
-        st.session_state.users_df = pd.concat([u_df, new_boss], ignore_index=True)
-        save_csv(USERS_CSV_ID, st.session_state.users_df)
-        st.rerun()
-
 if 'auth' not in st.session_state:
     st.title("🏭 GETMANN Login")
     with st.form("login"):
         e = st.text_input("Логін")
         p = st.text_input("Пароль", type="password")
         if st.form_submit_button("Увійти"):
-            user = st.session_state.users_df[(st.session_state.users_df['email'] == e) & (st.session_state.users_df['password'] == str(p))]
+            user = u_df[(u_df['email'] == e) & (u_df['password'] == str(p))]
             if not user.empty:
                 st.session_state.auth = user.iloc[0].to_dict()
                 st.rerun()
@@ -91,10 +82,18 @@ me = st.session_state.auth
 role = me['role']
 can_edit = role in ["Супер Адмін", "Адмін", "Менеджер"]
 
-# --- ДАНІ ---
+# --- ДАНІ ЗАМОВЛЕНЬ ---
 if 'df' not in st.session_state:
     st.session_state.df = load_csv(ORDERS_CSV_ID, ['ID', 'Дата', 'Клієнт', 'Телефон', 'Місто', 'Товари_JSON', 'Аванс', 'Готовність', 'Коментар'])
 df = st.session_state.df
+
+# Обчислення наступного ID
+def get_next_id(current_df):
+    try:
+        ids = pd.to_numeric(current_df['ID'], errors='coerce').dropna()
+        return int(ids.max() + 1) if not ids.empty else 1001
+    except:
+        return 1001
 
 tabs = st.tabs(["📋 Журнал", "📝 Редактор", "⚙️ Адмін"])
 
@@ -102,43 +101,50 @@ tabs = st.tabs(["📋 Журнал", "📝 Редактор", "⚙️ Адмін
 with tabs[0]:
     if can_edit:
         with st.expander("➕ СТВОРИТИ ЗАМОВЛЕННЯ"):
+            next_id = get_next_id(df)
             with st.form("new_order", clear_on_submit=True):
                 c1, c2 = st.columns(2)
-                f_id = c1.text_input("Номер (ID)*")
+                f_id = c1.text_input("Номер замовлення*", value=str(next_id))
                 f_cl = c2.text_input("Клієнт*")
                 f_ph = c1.text_input("Телефон")
                 f_ct = c2.text_input("Місто/Відділення")
+                
+                st.write("📦 **Товар та коментар:**")
                 tc1, tc2, tc3 = st.columns([3, 1, 1])
-                t_n = tc1.text_input("Назва товару")
+                t_n = tc1.text_input("Назва")
                 t_a = tc2.text_input("Артикул")
                 t_q = tc3.number_input("К-ть", min_value=1, value=1)
-                f_cm = st.text_area("Коментар")
+                
+                f_cm = st.text_area("Коментар менеджера")
                 f_av = st.number_input("Аванс", min_value=0.0)
-                if st.form_submit_button("✅ Зберегти"):
+                
+                if st.form_submit_button("✅ Зберегти в базу"):
                     if f_id and f_cl:
                         items = [{"назва": t_n, "арт": t_a, "к-ть": t_q}]
-                        new_row = {'ID': str(f_id), 'Дата': datetime.now().strftime("%d.%m.%Y"), 'Клієнт': f_cl, 'Телефон': f_ph, 'Місто': f_ct, 'Аванс': f_av, 'Готовність': 'В черзі', 'Товари_JSON': json.dumps(items, ensure_ascii=False), 'Коментар': f_cm}
+                        new_row = {
+                            'ID': str(f_id), 
+                            'Дата': datetime.now().strftime("%d.%m.%Y"), 
+                            'Клієнт': f_cl, 'Телефон': f_ph, 'Місто': f_ct, 
+                            'Аванс': f_av, 'Готовність': 'В черзі', 
+                            'Товари_JSON': json.dumps(items, ensure_ascii=False), 
+                            'Коментар': f_cm
+                        }
                         st.session_state.df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
                         save_csv(ORDERS_CSV_ID, st.session_state.df)
                         st.rerun()
+                    else: st.error("Заповніть обов'язкові поля!")
 
     st.divider()
-    search = st.text_input("🔍 Пошук...")
-    
-    # ПРАВИЛЬНЕ ВІДОБРАЖЕННЯ ВСІХ РЯДКІВ (НОВІ ЗВЕРХУ)
-    df_display = df.copy()
-    df_display = df_display.iloc[::-1] # Реверс списку
-    
+    search = st.text_input("🔍 Швидкий пошук...")
+    df_display = df.copy().iloc[::-1]
     if search:
         df_display = df_display[df_display.apply(lambda r: search.lower() in str(r.values).lower(), axis=1)]
     
     status_options = ["В черзі", "В роботі", "Готово"]
-    
     for idx, row in df_display.iterrows():
         with st.container(border=True):
             c_h, c_s = st.columns([4, 1])
             c_h.markdown(f"### №{row['ID']} | {row['Клієнт']}")
-            
             curr_stat = row.get('Готовність', 'В черзі')
             if curr_stat not in status_options: curr_stat = "В черзі"
             
@@ -147,10 +153,8 @@ with tabs[0]:
                 df.at[idx, 'Готовність'] = new_stat
                 save_csv(ORDERS_CSV_ID, df)
                 st.rerun()
-
-            st.write(f"📅 {row['Дата']} | 📍 {row['Місто']} | 📞 {row['Телефон']}")
             
-            # Товари та креслення
+            st.write(f"📅 {row['Дата']} | 📍 {row['Місто']} | 📞 {row['Телефон']}")
             try: items = json.loads(row['Товари_JSON'])
             except: items = []
             for it in items:
@@ -158,7 +162,6 @@ with tabs[0]:
                 col_i.write(f"📦 **{it.get('назва')}** (Арт: {it.get('арт')}) — {it.get('к-ть')} шт.")
                 draw = get_drawing_link(it.get('арт'))
                 if draw: col_d.link_button("📄 Креслення", draw['webViewLink'])
-            
             if row['Коментар']: st.info(f"💬 {row['Коментар']}")
             if role != "Токар": st.write(f"💰 Аванс: {row['Аванс']} грн")
 
@@ -172,7 +175,7 @@ with tabs[1]:
             except: items_l = []
             st.write(f"Редагування №{s_id}")
             new_items = st.data_editor(pd.DataFrame(items_l), num_rows="dynamic")
-            new_c = st.text_area("Коментар", value=df.at[idx, 'Коментар'], key=f"comm_{idx}")
+            new_c = st.text_area("Змінити коментар", value=df.at[idx, 'Коментар'], key=f"edit_comm_{idx}")
             if st.button("💾 Зберегти зміни"):
                 df.at[idx, 'Товари_JSON'] = new_items.to_json(orient='records', force_ascii=False)
                 df.at[idx, 'Коментар'] = new_c
