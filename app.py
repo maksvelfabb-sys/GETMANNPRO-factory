@@ -146,3 +146,56 @@ with tabs[0]:
             except: avans = 0.0
 
             if role != "Токар":
+                c_m1, c_m2, c_m3 = st.columns(3)
+                c_m1.metric("Сума замовлення", f"{round(total_sum, 2)} грн")
+                c_m2.metric("Аванс", f"{avans} грн")
+                c_m3.metric("Залишок", f"{round(total_sum - avans, 2)} грн")
+
+            if row['Коментар']:
+                st.info(f"💬 {row['Коментар']}")
+
+            # РЕДАГУВАННЯ КАРТКИ
+            if can_edit:
+                with st.expander("✏️ РЕДАГУВАТИ ДАНІ ТА СКЛАД"):
+                    st.subheader("👤 Дані клієнта")
+                    ec1, ec2 = st.columns(2)
+                    new_client = ec1.text_input("ПІБ Клієнта", value=row['Клієнт'], key=f"cl_{idx}")
+                    new_phone = ec2.text_input("Телефон", value=row['Телефон'], key=f"ph_{idx}")
+                    new_city = st.text_input("Місто / Відділення", value=row['Місто'], key=f"ct_{idx}")
+                    
+                    st.subheader("📦 Склад замовлення")
+                    edited_items_df = st.data_editor(pd.DataFrame(items), num_rows="dynamic", key=f"it_{idx}")
+                    
+                    st.subheader("💰 Фінанси та коментар")
+                    new_a = st.number_input("Аванс", value=avans, key=f"av_{idx}")
+                    new_comm = st.text_area("Коментар", value=row['Коментар'], key=f"cm_{idx}")
+                    
+                    if st.button("💾 Зберегти зміни в картку", key=f"btn_{idx}"):
+                        # Перерахунок сум у товарах
+                        for i, r_it in edited_items_df.iterrows():
+                            try: edited_items_df.at[i, 'сума'] = round(float(r_it['к-ть']) * float(r_it['ціна']), 2)
+                            except: pass
+                        
+                        # Оновлення основного DataFrame
+                        df.at[orig_idx, 'Клієнт'] = new_client
+                        df.at[orig_idx, 'Телефон'] = new_phone
+                        df.at[orig_idx, 'Місто'] = new_city
+                        df.at[orig_idx, 'Аванс'] = new_a
+                        df.at[orig_idx, 'Коментар'] = new_comm
+                        df.at[orig_idx, 'Товари_JSON'] = edited_items_df.to_json(orient='records', force_ascii=False)
+                        
+                        save_csv(ORDERS_CSV_ID, df); st.rerun()
+
+# --- АДМІН ПАНЕЛЬ ---
+with tabs[1]:
+    if role == "Супер Адмін":
+        st.subheader("👥 Користувачі")
+        u_df = load_csv(USERS_CSV_ID, ['email', 'password', 'role', 'name'])
+        ed_u = st.data_editor(u_df, num_rows="dynamic")
+        if st.button("💾 Зберегти користувачів"): save_csv(USERS_CSV_ID, ed_u)
+        
+        st.divider()
+        st.subheader("⚠️ Очищення бази")
+        if st.checkbox("Підтверджую видалення всіх замовлень"):
+            if st.button("🔥 ОЧИСТИТИ ВСЕ", type="primary"):
+                save_csv(ORDERS_CSV_ID, pd.DataFrame(columns=COLS)); st.rerun()
