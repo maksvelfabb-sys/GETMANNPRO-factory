@@ -8,7 +8,7 @@ from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
 # --- КОНФІГУРАЦІЯ ---
 ORDERS_CSV_ID = "1Ws7rL1uyWcYbLeXsmqmaijt98Gxo6k3i"
-USERS_CSV_ID = "1qwPXMqIwDATgIsYHo7us6yQgE-JyhT7f" 
+USERS_CSV_ID = "1qwPXMqIwDATgIsYHo7us6yQgE-JyhT7f"
 FOLDER_DRAWINGS_ID = "1SQyZ6OUk9xNBMvh98Ob4zw9LVaqWRtas"
 COLS = ['ID', 'Дата', 'Клієнт', 'Телефон', 'Місто', 'ТТН', 'Товари_JSON', 'Аванс', 'Готовність', 'Коментар']
 USER_COLS = ['email', 'password', 'role']
@@ -51,26 +51,31 @@ def save_csv(file_id, df):
         media_body = MediaIoBaseUpload(io.BytesIO(csv_data), mimetype='text/csv', resumable=False)
         service.files().update(fileId=file_id, media_body=media_body).execute()
         st.cache_data.clear()
-        st.toast("Дані синхронізовано ✅")
-    except: st.error("Помилка Drive")
+        st.toast("Синхронізовано ✅")
+    except: st.error("Помилка запису Drive")
 
 def get_drawing_link(art):
-    if not art or pd.isna(art) or str(art).strip() == "": return None
+    """Пошук прямого посилання на креслення за артикулом"""
+    if not art or pd.isna(art) or str(art).strip() in ["", "nan", "None"]:
+        return None
     service = get_drive_service()
     try:
-        query = f"'{FOLDER_DRAWINGS_ID}' in parents and name contains '{art}' and trashed = false"
+        # Очищуємо артикул від зайвих символів для точного пошуку
+        clean_art = str(art).strip()
+        query = f"'{FOLDER_DRAWINGS_ID}' in parents and name contains '{clean_art}' and trashed = false"
         results = service.files().list(q=query, fields="files(id, name, webViewLink)").execute()
         files = results.get('files', [])
         if files and 'webViewLink' in files[0]:
             return str(files[0]['webViewLink'])
         return None
-    except: return None
+    except:
+        return None
 
-# --- АВТОРИЗАЦІЯ (maksvel.fabb@gmail.com) ---
+# --- АВТОРИЗАЦІЯ ---
 if 'auth' not in st.session_state:
     st.title("🏭 GETMANN ERP")
     with st.container(border=True):
-        e_in = st.text_input("Логін (Email)").strip().lower()
+        e_in = st.text_input("Логін").strip().lower()
         p_in = st.text_input("Пароль", type="password").strip()
         if st.button("Увійти", use_container_width=True):
             if e_in == "maksvel.fabb@gmail.com" and p_in == "1234":
@@ -84,55 +89,95 @@ if 'auth' not in st.session_state:
             else: st.error("Доступ обмежено")
     st.stop()
 
+# --- ГОЛОВНИЙ ЕКРАН ---
 role = st.session_state.auth.get('role', 'Гість')
+df = load_csv(ORDERS_CSV_ID, COLS)
 
-# --- SIDEBAR ---
 with st.sidebar:
     st.title("🏢 МЕНЮ")
-    nav = ["📋 Замовлення", "⚙️ Налаштування"]
-    if role == "Супер Адмін": nav.append("👥 Користувачі")
-    menu = st.radio("Навігація:", nav)
+    menu = st.radio("Навігація:", ["📋 Замовлення", "⚙️ Налаштування"])
+    st.divider()
+    st.caption(f"Користувач: {st.session_state.auth['email']}")
     if st.button("🚪 Вихід"):
         del st.session_state.auth
         st.rerun()
 
-# --- СТОРІНКА: ЗАМОВЛЕННЯ ---
 if menu == "📋 Замовлення":
     st.header("Журнал замовлень")
-    df = load_csv(ORDERS_CSV_ID, COLS)
     
-    # Виведення замовлень (від нових до старих)
-    df_v = df.copy().iloc[::-1]
-    
-    for idx, row in df_v.iterrows():
-        # Створення унікального ID для блоку (використовуємо реальний ID замовлення)
-        order_id = str(row['ID'])
-        
-        with st.container(border=True):
-            st.markdown(f"### 📦 Замовлення №{order_id} — {row['Клієнт']}")
+    # Створення нового замовлення (Кошик)
+    if role in ["Супер Адмін", "Адмін", "Менеджер"]:
+        with st.expander("➕ СТВОРИТИ ЗАМОВЛЕННЯ"):
+            if 'cart' not in st.session_state: st.session_state.cart = []
             
-            try:
-                items = json.loads(row['Товари_JSON'])
-            except:
-                items = []
+            c1, c2, c3 = st.columns([1, 2, 2])
+            num_ids = pd.to_numeric(df['ID'], errors='coerce').dropna()
+            next_id = int(num_ids.max() + 1) if not num_ids.empty else 1001
+            f_id = c1.text_input("№", value=str(next_id))
+            f_cl = c2.text_input("Клієнт*")
+            f_ph = c3.text_input("Телефон")
             
-            # Таблиця товарів всередині картки
-            for i, it in enumerate(items):
-                c_name, c_btn = st.columns([3, 1])
-                art = str(it.get('арт', '')).strip()
-                c_name.write(f"🔹 {it.get('назва')} ({art}) — {it.get('к-ть')} шт.")
-                
-                # --- ВИПРАВЛЕННЯ ПОМИЛКИ TYPEERROR ---
-                link = get_drawing_link(art)
-                
-                # Перевіряємо, чи link - це дійсно рядок і чи він не пустий
-                if isinstance(link, str) and len(link) > 10:
-                    c_btn.link_button("📕 PDF", url=link, use_container_width=True, key=f"lk_{order_id}_{i}")
-                else:
-                    c_btn.button("⚠️ PDF", disabled=True, use_container_width=True, key=f"no_{order_id}_{i}", help="Креслення не знайдено")
+            st.write("📦 **Додати позицію:**")
+            tc1, tc2, tc3, tc4 = st.columns([3, 1, 1, 1])
+            t_n = tc1.text_input("Назва", key="new_n")
+            t_a = tc2.text_input("Арт", key="new_a")
+            t_q = tc3.number_input("К-ть", 1, key="new_q")
+            t_p = tc4.number_input("Ціна", 0.0, key="new_p")
             
-            st.divider()
-            st.write(f"**Статус:** {row['Готовність']} | **Телефон:** {row['Телефон']}")
+            if st.button("➕ Додати в список"):
+                if t_n:
+                    st.session_state.cart.append({"назва": t_n, "арт": t_a, "к-ть": int(t_q), "ціна": float(t_p), "сума": round(t_q * t_p, 2)})
+                    st.rerun()
+            
+            if st.session_state.cart:
+                st.table(pd.DataFrame(st.session_state.cart))
+                if st.button("🚀 ЗБЕРЕГТИ ЗАМОВЛЕННЯ"):
+                    new_row = {
+                        'ID': str(f_id), 'Дата': datetime.now().strftime("%d.%m.%Y"),
+                        'Клієнт': f_cl, 'Телефон': f_ph, 'Місто': '', 'ТТН': '',
+                        'Товари_JSON': json.dumps(st.session_state.cart, ensure_ascii=False),
+                        'Аванс': '0', 'Готовність': 'В черзі', 'Коментар': ''
+                    }
+                    df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+                    save_csv(ORDERS_CSV_ID, df)
+                    st.session_state.cart = []
+                    st.rerun()
 
-elif menu == "👥 Користувачі":
-    st.write("Список користувачів доступний Супер Адміну.")
+    # Пошук та список
+    search = st.text_input("🔍 Пошук по базі...").lower()
+    df_v = df.copy().iloc[::-1]
+    if search:
+        df_v = df_v[df_v.apply(lambda r: search in str(r.values).lower(), axis=1)]
+
+    for idx, row in df_v.iterrows():
+        order_id = str(row['ID'])
+        with st.container(border=True):
+            st.markdown(f"**№{order_id} | {row['Клієнт']} | {row['Телефон']}**")
+            
+            try: items = json.loads(row['Товари_JSON'])
+            except: items = []
+            
+            for i, it in enumerate(items):
+                col_n, col_b = st.columns([4, 1.5])
+                art = str(it.get('арт', '')).strip()
+                col_n.write(f"🔹 {it.get('назва')} ({art}) — {it.get('к-ть')} шт.")
+                
+                # --- ГОРЯЧЕ ВИПРАВЛЕННЯ TYPEERROR ---
+                link = get_drawing_link(art)
+                # Перевіряємо, чи link є дійсно посиланням (рядок, що починається з http)
+                if isinstance(link, str) and link.startswith("http"):
+                    col_b.link_button("📕 PDF Креслення", url=link, use_container_width=True, key=f"lk_{order_id}_{i}")
+                else:
+                    col_b.button("❌ Без креслення", disabled=True, use_container_width=True, key=f"err_{order_id}_{i}")
+
+            # Зміна статусу
+            st.divider()
+            opts = ["В черзі", "В роботі", "Готовий до відправлення", "Відправлений"]
+            cur_st = row['Готовність'] if row['Готовність'] in opts else "В черзі"
+            new_st = st.selectbox("Змінити статус", opts, index=opts.index(cur_st), key=f"sel_{order_id}")
+            if new_st != row['Готовність']:
+                df.loc[df['ID'] == order_id, 'Готовність'] = new_st
+                save_csv(ORDERS_CSV_ID, df); st.rerun()
+
+elif menu == "⚙️ Налаштування":
+    st.info("Налаштування доступні через адміністратора.")
