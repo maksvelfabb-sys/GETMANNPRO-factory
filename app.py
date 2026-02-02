@@ -19,23 +19,27 @@ st.set_page_config(
 # --- ПІДКЛЮЧЕННЯ ДО GOOGLE DRIVE ---
 @st.cache_resource
 def get_drive_service():
-    """Авторизація через Secrets або локальний JSON"""
+    """Авторизація: спочатку пробуємо Secrets, потім локальний файл"""
     try:
+        # Пріоритет: Streamlit Secrets
         if "gcp_service_account" in st.secrets:
-            # Для Streamlit Cloud (використовуємо Secrets)
-            info = st.secrets["gcp_service_account"]
+            info = dict(st.secrets["gcp_service_account"])
+            # Важливо: виправляємо символи переносу рядка, якщо вони збилися
+            if "private_key" in info:
+                info["private_key"] = info["private_key"].replace("\\n", "\n")
+            creds = service_account.Credentials.from_service_account_info(info)
         else:
-            # Для локальної перевірки (потрібен файл у папці)
+            # Тільки для локальної розробки
             import json
             with open("service_account.json") as f:
                 info = json.load(f)
-        
-        creds = service_account.Credentials.from_service_account_info(info)
+            creds = service_account.Credentials.from_service_account_info(info)
+            
         return build('drive', 'v3', credentials=creds)
     except Exception as e:
         st.error(f"Помилка авторизації Google: {e}")
         return None
-
+        
 def load_data():
     """Завантаження бази замовлень CSV з Google Drive"""
     service = get_drive_service()
@@ -165,4 +169,5 @@ st.sidebar.image("https://via.placeholder.com/150?text=FACTORY", width=100)
 st.sidebar.markdown("---")
 st.sidebar.write("**Build 4.0 Stable**")
 st.sidebar.write("Хмарна версія")
+
 
