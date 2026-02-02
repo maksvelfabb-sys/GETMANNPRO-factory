@@ -17,14 +17,18 @@ st.set_page_config(page_title="GETMANN ERP", layout="wide", page_icon="🏭")
 @st.cache_resource
 def get_drive_service():
     if "gcp_service_account" in st.secrets:
-        info = dict(st.secrets["gcp_service_account"])
-        info["private_key"] = info["private_key"].replace("\\n", "\n").strip()
-        creds = service_account.Credentials.from_service_account_info(info)
-        return build('drive', 'v3', credentials=creds)
+        try:
+            info = dict(st.secrets["gcp_service_account"])
+            info["private_key"] = info["private_key"].replace("\\n", "\n").strip()
+            creds = service_account.Credentials.from_service_account_info(info)
+            return build('drive', 'v3', credentials=creds)
+        except Exception as e:
+            st.error(f"Помилка конфігурації секретів: {e}")
     return None
 
 def load_csv(file_id, cols):
     service = get_drive_service()
+    if not service: return pd.DataFrame(columns=cols)
     try:
         request = service.files().get_media(fileId=file_id)
         fh = io.BytesIO()
@@ -35,7 +39,9 @@ def load_csv(file_id, cols):
         df = pd.read_csv(fh).fillna("")
         df.columns = df.columns.str.strip()
         return df
-    except:
+    except Exception as e:
+        if "404" in str(e):
+            st.warning(f"⚠️ Файл {file_id} не знайдено. Перевірте, чи надано доступ сервісному акаунту!")
         return pd.DataFrame(columns=cols)
 
 def save_csv(file_id, df):
@@ -45,9 +51,9 @@ def save_csv(file_id, df):
         csv_data = df.to_csv(index=False).encode('utf-8')
         media_body = MediaIoBaseUpload(io.BytesIO(csv_data), mimetype='text/csv', resumable=False)
         service.files().update(fileId=file_id, media_body=media_body).execute()
-        st.toast("Збережено ✅")
+        st.toast("Дані в хмарі ✅")
     except Exception as e:
-        st.error(f"Помилка Drive: {e}")
+        st.error(f"❌ Помилка Drive (404/Access): Переконайтеся, що файл розшарено для сервісного акаунта.")
 
 # --- АВТОРИЗАЦІЯ ---
 if 'users_df' not in st.session_state:
@@ -169,3 +175,4 @@ with tabs[1]:
         if st.button("💾 Зберегти користувачів"): save_csv(USERS_CSV_ID, ed_u)
 
 st.sidebar.button("🚪 Вихід", on_click=lambda: st.session_state.clear())
+
