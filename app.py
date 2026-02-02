@@ -8,7 +8,7 @@ from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
 # --- КОНФІГУРАЦІЯ ---
 ORDERS_CSV_ID = "1Ws7rL1uyWcYbLeXsmqmaijt98Gxo6k3i"
-USERS_CSV_ID = "1qwPXMqIwDATgIsYHo7us6yQgE-JyhT7f" # Оновлено на ваш user.csv
+USERS_CSV_ID = "1ibrEFKOyvt5xgC_vSMhvDmNxdO1pVYfr4a-TqgJM82Y"
 FOLDER_DRAWINGS_ID = "1SQyZ6OUk9xNBMvh98Ob4zw9LVaqWRtas"
 COLS = ['ID', 'Дата', 'Клієнт', 'Телефон', 'Місто', 'ТТН', 'Товари_JSON', 'Аванс', 'Готовність', 'Коментар']
 USER_COLS = ['email', 'password', 'role']
@@ -27,7 +27,6 @@ def get_drive_service():
         except: return None
     return None
 
-@st.cache_data(ttl=60)
 def load_csv(file_id, cols):
     service = get_drive_service()
     if not service: return pd.DataFrame(columns=cols)
@@ -38,9 +37,7 @@ def load_csv(file_id, cols):
         done = False
         while not done: _, done = downloader.next_chunk()
         fh.seek(0)
-        # Змінено: автовизначення розділювача для стабільності бази користувачів
-        df = pd.read_csv(fh, sep=None, engine='python', dtype=str).fillna("")
-        df.columns = [c.lower().strip() for c in df.columns]
+        df = pd.read_csv(fh, dtype=str).fillna("")
         for c in cols:
             if c not in df.columns: df[c] = ""
         return df[cols]
@@ -53,11 +50,9 @@ def save_csv(file_id, df):
         csv_data = df.to_csv(index=False).encode('utf-8')
         media_body = MediaIoBaseUpload(io.BytesIO(csv_data), mimetype='text/csv', resumable=False)
         service.files().update(fileId=file_id, media_body=media_body).execute()
-        st.cache_data.clear() # Важливо: очищення кешу після запису
         st.toast("Дані синхронізовано ✅")
     except: st.error("Помилка Drive")
 
-# --- ДОПОМІЖНІ ФУНКЦІЇ ---
 def get_drawing_link(art):
     if not art: return None
     service = get_drive_service()
@@ -84,34 +79,26 @@ def get_card_style(status):
     }
     return styles.get(status, "background-color: #FAFAFA; border: 1px solid #D1D1D1;")
 
-# --- АВТОРИЗАЦІЯ (Оновлений блок) ---
+# --- АВТОРИЗАЦІЯ ---
 if 'auth' not in st.session_state:
     st.title("🏭 GETMANN ERP")
     with st.container(border=True):
-        e = st.text_input("Логін (Email)").strip().lower()
+        e = st.text_input("Логін (Email)").strip()
         p = st.text_input("Пароль", type="password").strip()
         if st.button("Увійти", use_container_width=True):
-            # 1. Супер Адмін (завжди працює)
             if e == "maksvel.fabb@gmail.com" and p == "1234":
                 st.session_state.auth = {'email': e, 'role': 'Супер Адмін'}
-                st.cache_data.clear()
                 st.rerun()
-            
-            # 2. Перевірка бази користувачів
-            st.cache_data.clear()
             u_df = load_csv(USERS_CSV_ID, USER_COLS)
-            u_df['email'] = u_df['email'].str.strip().str.lower()
-            u_df['password'] = u_df['password'].astype(str).str.strip()
-            
-            user_match = u_df[(u_df['email'] == e) & (u_df['password'] == p)]
-            if not user_match.empty:
-                st.session_state.auth = user_match.iloc[0].to_dict()
+            user = u_df[(u_df['email'] == e) & (u_df['password'] == str(p))]
+            if not user.empty:
+                st.session_state.auth = user.iloc[0].to_dict()
                 st.rerun()
             else: st.error("❌ Доступ обмежено")
     st.stop()
 
 # --- SIDEBAR МЕНЮ ---
-role = st.session_state.auth.get('role', 'Гість')
+role = st.session_state.auth['role']
 with st.sidebar:
     st.title("🏢 МЕНЮ")
     nav_list = ["📋 Замовлення", "⚙️ Налаштування", "📐 Каталог креслень", "🏗️ Матеріали"]
@@ -119,6 +106,7 @@ with st.sidebar:
     menu = st.radio("Навігація:", nav_list)
     st.divider()
     st.write(f"👤 {st.session_state.auth['email']}")
+    st.caption(f"Роль: {role}")
     if st.button("🚪 Вихід"):
         del st.session_state.auth
         st.rerun()
@@ -172,7 +160,9 @@ if menu == "📋 Замовлення":
                     with col_t1: st.markdown(f"🔹 **{it.get('назва')}** ({art}) — {it.get('к-ть')} шт × {it.get('ціна')} = **{it.get('сума')}**")
                     with col_t2:
                         if link: st.link_button("📕 PDF Креслення", link, use_container_width=True, key=f"lk_{idx}_{i}")
-                        else: st.caption("❌ PDF не знайдено")
+                        else:
+                            if st.button("📕 PDF Креслення", use_container_width=True, key=f"err_{idx}_{i}"):
+                                st.toast("❌ Креслення не знайдено", icon="⚠️")
                     t_sum += safe_float(it.get('сума'))
                 if row['Коментар']: st.caption(f"💬 {row['Коментар']}")
                 st.write(f"**Разом: {t_sum} грн** | Аванс: {row['Аванс']}")
@@ -213,36 +203,45 @@ if menu == "📋 Замовлення":
                             df.loc[mask, 'Товари_JSON'] = json.dumps(curr_items, ensure_ascii=False)
                             save_csv(ORDERS_CSV_ID, df); st.rerun()
 
-# --- СТОРІНКА: КОРИСТУВАЧІ (Оновлений блок) ---
+# --- СТОРІНКА: НАЛАШТУВАННЯ ---
+elif menu == "⚙️ Налаштування":
+    st.header("Налаштування профілю")
+    u_df = load_csv(USERS_CSV_ID, USER_COLS)
+    my_email = st.session_state.auth['email']
+    with st.container(border=True):
+        st.write(f"**Ваш логін:** {my_email}")
+        new_pass = st.text_input("Новий пароль", type="password")
+        if st.button("Оновити пароль"):
+            u_df.loc[u_df['email'] == my_email, 'password'] = new_pass
+            save_csv(USERS_CSV_ID, u_df); st.success("Пароль змінено!")
+
+    if role == "Супер Адмін":
+        st.divider()
+        st.subheader("🔴 Зона ризику")
+        if st.button("❌ ОЧИСТИТИ БАЗУ ЗАМОВЛЕНЬ"): st.session_state.confirm_delete = True
+        if st.session_state.get('confirm_delete'):
+            st.error("Впевнені?")
+            if st.button("ТАК, ВИДАЛИТИ ВСЕ"):
+                save_csv(ORDERS_CSV_ID, pd.DataFrame(columns=COLS))
+                st.session_state.confirm_delete = False; st.rerun()
+            if st.button("СКАСУВАТИ"):
+                st.session_state.confirm_delete = False; st.rerun()
+
+# --- СТОРІНКА: КОРИСТУВАЧІ ---
 elif menu == "👥 Користувачі" and role == "Супер Адмін":
     st.header("Керування командою")
     u_df = load_csv(USERS_CSV_ID, USER_COLS)
-    
-    with st.expander("➕ Додати користувача", expanded=True):
-        with st.form("add_u", clear_on_submit=True):
-            ne = st.text_input("Email (Логін)").strip().lower()
-            np = st.text_input("Пароль").strip()
-            nr = st.selectbox("Роль", ["Менеджер", "Адмін", "Токар", "Гість"])
-            if st.form_submit_button("🚀 Створити користувача"):
-                if ne and np:
-                    new_u = pd.DataFrame([{'email': ne, 'password': np, 'role': nr}])
-                    u_df = pd.concat([u_df, new_u], ignore_index=True)
-                    save_csv(USERS_CSV_ID, u_df)
-                    st.rerun()
-                else: st.error("Заповніть email та пароль")
-    
-    st.divider()
-    st.subheader("Список доступів")
+    with st.expander("➕ Додати користувача"):
+        with st.form("add_u"):
+            ne, np, nr = st.text_input("Email"), st.text_input("Пароль"), st.selectbox("Роль", ["Менеджер", "Адмін", "Токар", "Гість"])
+            if st.form_submit_button("Створити"):
+                u_df = pd.concat([u_df, pd.DataFrame([{'email': ne, 'password': np, 'role': nr}])], ignore_index=True)
+                save_csv(USERS_CSV_ID, u_df); st.rerun()
     st.dataframe(u_df, use_container_width=True)
-    
-    del_u = st.selectbox("Оберіть користувача для видалення", u_df['email'].tolist())
-    if st.button("❌ Видалити доступ"):
-        if del_u != st.session_state.auth['email']:
-            u_df = u_df[u_df['email'] != del_u]
-            save_csv(USERS_CSV_ID, u_df)
-            st.rerun()
-        else: st.warning("Не можна видалити самого себе")
+    del_u = st.selectbox("Видалити користувача", u_df['email'].unique())
+    if st.button("Видалити"):
+        u_df = u_df[u_df['email'] != del_u]
+        save_csv(USERS_CSV_ID, u_df); st.rerun()
 
-elif menu == "⚙️ Налаштування": st.info("🚧 Налаштування профілю")
 elif menu == "📐 Каталог креслень": st.info("🚧 У розробці")
 elif menu == "🏗️ Матеріали": st.info("🚧 У розробці")
