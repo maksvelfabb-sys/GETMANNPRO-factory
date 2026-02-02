@@ -14,6 +14,15 @@ COLS = ['ID', 'Дата', 'Клієнт', 'Телефон', 'Місто', 'ТТ�
 
 st.set_page_config(page_title="GETMANN ERP", layout="wide", page_icon="🏭")
 
+# --- ЗАХИСНА ФУНКЦІЯ ПЕРЕТВОРЕННЯ ЧИСЕЛ ---
+def safe_float(value):
+    try:
+        if isinstance(value, str):
+            value = value.replace(',', '.')
+        return float(value)
+    except (ValueError, TypeError):
+        return 0.0
+
 def get_card_style(status):
     if status == "В роботі":
         return "background-color: #FFF9C4; border: 1px solid #FBC02D;"
@@ -107,18 +116,14 @@ with tabs[0]:
                 f_id = c1.text_input("№*", value=str(next_id))
                 f_cl = c2.text_input("Клієнт*")
                 f_ph = c3.text_input("Телефон")
-                
                 c4, c5, c6 = st.columns([2, 2, 1])
                 f_ct = c4.text_input("Місто")
                 f_ttn = c5.text_input("ТТН")
                 f_av = c6.number_input("Аванс", min_value=0.0)
-                
                 f_cm = st.text_area("Коментар", height=68)
-                
                 st.write("📦 **Товари:**")
                 tc1, tc2, tc3, tc4 = st.columns([3, 1, 1, 1])
                 t_n, t_a, t_q, t_p = tc1.text_input("Назва"), tc2.text_input("Арт"), tc3.number_input("К-ть", 1), tc4.number_input("Ціна", 0.0)
-                
                 if st.form_submit_button("🚀 Створити"):
                     items = [{"назва": t_n, "арт": t_a, "к-ть": t_q, "ціна": t_p, "сума": round(t_q * t_p, 2)}]
                     new_row = {'ID': str(f_id), 'Дата': datetime.now().strftime("%d.%m.%Y"), 'Клієнт': f_cl, 'Телефон': str(f_ph), 'Місто': f_ct, 'ТТН': f_ttn, 'Аванс': str(f_av), 'Готовність': 'В черзі', 'Товари_JSON': json.dumps(items, ensure_ascii=False), 'Коментар': f_cm}
@@ -132,13 +137,12 @@ with tabs[0]:
 
     for idx, row in df_v.iterrows():
         status = row.get('Готовність', 'В черзі')
-        ttn_val = row.get('ТТН', '')
         style = get_card_style(status)
         
         st.markdown(f"""
             <div style="{style} padding: 8px 15px; border-radius: 6px; margin-bottom: 0px; color: #000;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-size: 16px; font-weight: bold;">№{row['ID']} | {row['Клієнт']} {f'| 📦 ТТН: {ttn_val}' if ttn_val else ''}</span>
+                    <span style="font-size: 16px; font-weight: bold;">№{row['ID']} | {row['Клієнт']} {f'| 📦 ТТН: {row.get("ТТН","")}' if row.get("ТТН","") else ''}</span>
                     <span style="font-size: 11px; font-weight: 700;">{status.upper()}</span>
                 </div>
                 <div style="font-size: 12px; opacity: 0.8;">
@@ -152,7 +156,8 @@ with tabs[0]:
             with c_main:
                 try: items = json.loads(row['Товари_JSON'])
                 except: items = []
-                total = sum(float(it.get('к-ть', 0)) * float(it.get('ціна', 0)) for it in items)
+                # ВИПРАВЛЕННЯ ТУТ: Використовуємо safe_float
+                total = sum(safe_float(it.get('к-ть', 0)) * safe_float(it.get('ціна', 0)) for it in items)
                 item_list = [f"<b>{it.get('назва')}</b> ({it.get('к-ть')}шт)" for it in items]
                 st.markdown(" • ".join(item_list), unsafe_allow_html=True)
                 if row['Коментар']: st.markdown(f"<small style='color: #444;'>💬 {row['Коментар']}</small>", unsafe_allow_html=True)
@@ -166,7 +171,7 @@ with tabs[0]:
 
             f1, f2, f3, f4 = st.columns([1, 1, 1, 2])
             if role != "Токар":
-                avans = float(str(row['Аванс']).replace(',', '.')) if row['Аванс'] else 0.0
+                avans = safe_float(row['Аванс'])
                 f1.caption(f"Сплачено: {avans}")
                 f2.caption(f"Залишок: {round(total - avans, 2)}")
             
@@ -174,25 +179,18 @@ with tabs[0]:
             if draws: f4.markdown(f"📎 <small>Креслень: {len(draws)}</small>", unsafe_allow_html=True)
 
             if can_edit:
-                with st.expander("✏️ Редагувати дані замовлення"):
+                with st.expander("✏️ Редагувати"):
                     with st.form(f"ed_{row['ID']}"):
-                        r1c1, r1c2, r1c3 = st.columns(3)
-                        e_cl = r1c1.text_input("Клієнт", value=row['Клієнт'])
-                        e_ph = r1c2.text_input("Телефон", value=row['Телефон'])
-                        e_ttn = r1c3.text_input("ТТН", value=row.get('ТТН', ''))
-                        
-                        r2c1, r2c2 = st.columns([1, 2])
-                        e_ct = r2c1.text_input("Місто", value=row.get('Місто', ''))
-                        e_cm = r2c2.text_input("Коментар", value=row.get('Коментар', ''))
-                        
+                        e1, e2, e3 = st.columns(3)
+                        e_cl = e1.text_input("Клієнт", value=row['Клієнт'])
+                        e_ph = e2.text_input("Телефон", value=row['Телефон'])
+                        e_ttn = e3.text_input("ТТН", value=row.get('ТТН', ''))
+                        e_ct = st.text_input("Місто", value=row.get('Місто', ''))
+                        e_cm = st.text_input("Коментар", value=row.get('Коментар', ''))
                         e_it = st.data_editor(pd.DataFrame(items), num_rows="dynamic", key=f"det_{idx}")
-                        
-                        if st.form_submit_button("Зберегти зміни"):
+                        if st.form_submit_button("Зберегти"):
                             mask = df['ID'] == row['ID']
-                            df.loc[mask, 'Клієнт'] = e_cl
-                            df.loc[mask, 'Телефон'] = e_ph
-                            df.loc[mask, 'Місто'] = e_ct
-                            df.loc[mask, 'ТТН'] = e_ttn
-                            df.loc[mask, 'Коментар'] = e_cm
-                            df.loc[mask, 'Товари_JSON'] = json.dumps(e_it.to_dict('records'), ensure_ascii=False)
+                            df.loc[mask, 'Клієнт'], df.loc[mask, 'Телефон'] = e_cl, e_ph
+                            df.loc[mask, 'Місто'], df.loc[mask, 'ТТН'] = e_ct, e_ttn
+                            df.loc[mask, 'Коментар'], df.loc[mask, 'Товари_JSON'] = e_cm, json.dumps(e_it.to_dict('records'), ensure_ascii=False)
                             save_csv(ORDERS_CSV_ID, df); st.rerun()
