@@ -79,22 +79,34 @@ def get_card_style(status):
     }
     return styles.get(status, "background-color: #FAFAFA; border: 1px solid #D1D1D1;")
 
-# --- АВТОРИЗАЦІЯ ---
+# --- АВТОРИЗАЦІЯ (Build 4.76) ---
 if 'auth' not in st.session_state:
     st.title("🏭 GETMANN ERP")
     with st.container(border=True):
-        e = st.text_input("Логін (Email)").strip()
-        p = st.text_input("Пароль", type="password").strip()
+        e_input = st.text_input("Логін (Email)").strip()
+        p_input = st.text_input("Пароль", type="password").strip()
+        
         if st.button("Увійти", use_container_width=True):
-            if e == "maksvel.fabb@gmail.com" and p == "1234":
-                st.session_state.auth = {'email': e, 'role': 'Супер Адмін'}
+            # 1. ПЕРЕВІРКА ВАС (СУПЕР АДМІН)
+            if e_input == "maksvel.fabb@gmail.com" and p_input == "1234":
+                st.session_state.auth = {'email': e_input, 'role': 'Супер Адмін'}
+                st.cache_data.clear() # Очищаємо кеш при вході
                 st.rerun()
+            
+            # 2. ПЕРЕВІРКА ІНШИХ (З ФАЙЛУ)
+            # Очищаємо кеш перед перевіркою, щоб точно побачити нових юзерів
+            st.cache_data.clear() 
             u_df = load_csv(USERS_CSV_ID, USER_COLS)
-            user = u_df[(u_df['email'] == e) & (u_df['password'] == str(p))]
-            if not user.empty:
-                st.session_state.auth = user.iloc[0].to_dict()
+            
+            # Шукаємо збіг (важливо: приводимо пароль до рядка)
+            user_match = u_df[(u_df['email'] == e_input) & (u_df['password'].astype(str) == str(p_input))]
+            
+            if not user_match.empty:
+                st.session_state.auth = user_match.iloc[0].to_dict()
+                st.success(f"Вітаємо, {st.session_state.auth['role']}!")
                 st.rerun()
-            else: st.error("❌ Доступ обмежено")
+            else:
+                st.error("❌ Доступ обмежено. Перевірте логін/пароль або зверніться до Супер Адміна.")
     st.stop()
 
 # --- SIDEBAR МЕНЮ ---
@@ -280,4 +292,5 @@ def save_csv(file_id, df):
         st.toast("Дані синхронізовано з хмарою ✅")
     except Exception as e:
         st.error(f"Помилка Drive: {e}")
+
 
