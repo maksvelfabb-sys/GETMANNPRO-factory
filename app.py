@@ -79,34 +79,40 @@ def get_card_style(status):
     }
     return styles.get(status, "background-color: #FAFAFA; border: 1px solid #D1D1D1;")
 
-# --- АВТОРИЗАЦІЯ (Build 4.76) ---
+# --- АВТОРИЗАЦІЯ (Build 4.77) ---
 if 'auth' not in st.session_state:
     st.title("🏭 GETMANN ERP")
     with st.container(border=True):
-        e_input = st.text_input("Логін (Email)").strip()
+        # Очищаємо ввід користувача від випадкових пробілів
+        e_input = st.text_input("Логін (Email)").strip().lower()
         p_input = st.text_input("Пароль", type="password").strip()
         
         if st.button("Увійти", use_container_width=True):
             # 1. ПЕРЕВІРКА ВАС (СУПЕР АДМІН)
             if e_input == "maksvel.fabb@gmail.com" and p_input == "1234":
                 st.session_state.auth = {'email': e_input, 'role': 'Супер Адмін'}
-                st.cache_data.clear() # Очищаємо кеш при вході
+                st.cache_data.clear()
                 st.rerun()
             
             # 2. ПЕРЕВІРКА ІНШИХ (З ФАЙЛУ)
-            # Очищаємо кеш перед перевіркою, щоб точно побачити нових юзерів
             st.cache_data.clear() 
             u_df = load_csv(USERS_CSV_ID, USER_COLS)
             
-            # Шукаємо збіг (важливо: приводимо пароль до рядка)
-            user_match = u_df[(u_df['email'] == e_input) & (u_df['password'].astype(str) == str(p_input))]
+            # ОЧИЩЕННЯ ДАНИХ У ТАБЛИЦІ (щоб уникнути помилок формату)
+            u_df['email'] = u_df['email'].str.strip().str.lower()
+            u_df['password'] = u_df['password'].astype(str).str.strip()
+            
+            # Шукаємо користувача
+            user_match = u_df[(u_df['email'] == e_input) & (u_df['password'] == p_input)]
             
             if not user_match.empty:
                 st.session_state.auth = user_match.iloc[0].to_dict()
-                st.success(f"Вітаємо, {st.session_state.auth['role']}!")
+                st.success(f"Вхід виконано! Роль: {st.session_state.auth['role']}")
                 st.rerun()
             else:
-                st.error("❌ Доступ обмежено. Перевірте логін/пароль або зверніться до Супер Адміна.")
+                # Виводимо підказку для налагодження (тільки якщо ви самі тестуєте)
+                st.error("❌ Доступ обмежено.")
+                st.info("Переконайтеся, що в таблиці немає зайвих пробілів і пароль вказано вірно.")
     st.stop()
 
 # --- SIDEBAR МЕНЮ ---
@@ -292,5 +298,6 @@ def save_csv(file_id, df):
         st.toast("Дані синхронізовано з хмарою ✅")
     except Exception as e:
         st.error(f"Помилка Drive: {e}")
+
 
 
