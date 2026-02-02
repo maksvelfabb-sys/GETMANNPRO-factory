@@ -122,10 +122,21 @@ with tabs[0]:
         try: items = json.loads(row['Товари_JSON'])
         except: items = []
         
-        main_art = items[0].get('арт', '') if items else ''
         ttn_val = row.get('ТТН', '')
+        client_info = f"{row['Клієнт']} | {row['Телефон']} | {row['Місто']}"
 
-        st.markdown(f'<div style="{style} padding: 10px 15px; border-radius: 8px; color: #000;"><b>№{row["ID"]} | {row["Клієнт"]} {f"| Арт: {main_art}" if main_art else ""} {f"| 📦 {ttn_val}" if ttn_val else ""}</b></div>', unsafe_allow_html=True)
+        # ШАПКА: №, Клієнт, Телефон, Місто та ТТН (Артикул видалено)
+        st.markdown(f"""
+            <div style="{style} padding: 10px 15px; border-radius: 8px; color: #000; margin-bottom: -5px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 14px; font-weight: bold;">
+                        №{row['ID']} | {client_info} 
+                        {f' | <span style="color:#1565c0;">📦 {ttn_val}</span>' if ttn_val else ''}
+                    </span>
+                    <span style="font-size: 10px; font-weight: bold; background: rgba(255,255,255,0.4); padding: 2px 6px; border-radius: 4px;">{status.upper()}</span>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
 
         with st.container(border=True):
             c_info, c_status = st.columns([4, 1.2])
@@ -147,10 +158,12 @@ with tabs[0]:
             if can_edit:
                 with st.expander("📂 Розгорнути"):
                     with st.form(f"full_edit_{idx}"):
-                        st.write("👤 **Клієнт**")
+                        st.write("👤 **Клієнт та логістика**")
                         r1c1, r1c2, r1c3, r1c4 = st.columns(4)
-                        e_cl, e_ph = r1c1.text_input("Клієнт", value=row['Клієнт']), r1c2.text_input("Телефон", value=row['Телефон'])
-                        e_ct, e_tt = r1c3.text_input("Місто", value=row['Місто']), r1c4.text_input("ТТН", value=row['ТТН'])
+                        e_cl = r1c1.text_input("Клієнт", value=row['Клієнт'])
+                        e_ph = r1c2.text_input("Телефон", value=row['Телефон'])
+                        e_ct = r1c3.text_input("Місто", value=row['Місто'])
+                        e_tt = r1c4.text_input("ТТН", value=row['ТТН'])
                         
                         st.write("📦 **Товари**")
                         current_json_items = []
@@ -163,7 +176,6 @@ with tabs[0]:
                             u_p = col4.number_input("Ціна", value=safe_float(it.get('ціна')), key=f"p_{idx}_{i}")
                             u_s = col5.number_input("Сума", value=safe_float(it.get('сума')), key=f"s_{idx}_{i}")
                             
-                            # ПЕРЕРАХУНОК ДЛЯ КОЖНОГО ТОВАРУ
                             old_s = safe_float(it.get('сума'))
                             if round(u_s, 2) != round(old_s, 2):
                                 f_p = round(u_s / u_q, 2) if u_q > 0 else 0.0
@@ -191,3 +203,7 @@ with tabs[0]:
                             df.loc[mask, ['Клієнт', 'Телефон', 'Місто', 'ТТН', 'Коментар', 'Аванс']] = [e_cl, e_ph, e_ct, e_tt, e_cm, str(e_av)]
                             df.loc[mask, 'Товари_JSON'] = json.dumps(current_json_items, ensure_ascii=False)
                             save_csv(ORDERS_CSV_ID, df); st.rerun()
+
+with tabs[1]:
+    if role == "Супер Адмін":
+        if st.button("🔄 Оновити дані"): st.rerun()
