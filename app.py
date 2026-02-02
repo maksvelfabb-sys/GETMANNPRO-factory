@@ -9,19 +9,12 @@ from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 # --- КОНФІГУРАЦІЯ ---
 ORDERS_CSV_ID = "1Ws7rL1uyWcYbLeXsmqmaijt98Gxo6k3i"
 USERS_CSV_ID = "1ibrEFKOyvt5xgC_vSMhvDmNxdO1pVYfr4a-TqgJM82Y"
+FOLDER_DRAWINGS_ID = "1SQyZ6OUk9xNBMvh98Ob4zw9LVaqWRtas"
 COLS = ['ID', 'Дата', 'Клієнт', 'Телефон', 'Місто', 'ТТН', 'Товари_JSON', 'Аванс', 'Готовність', 'Коментар']
 
 st.set_page_config(page_title="GETMANN ERP", layout="wide", page_icon="🏭")
 
-# --- ДОПОМІЖНІ ФУНКЦІЇ ---
-def safe_float(v):
-    try: return float(str(v).replace(',', '.'))
-    except: return 0.0
-
-def safe_int(v):
-    try: return int(float(v))
-    except: return 1
-
+# --- ФУНКЦІЇ DRIVE ---
 @st.cache_resource
 def get_drive_service():
     if "gcp_service_account" in st.secrets:
@@ -32,6 +25,19 @@ def get_drive_service():
             return build('drive', 'v3', credentials=creds)
         except: return None
     return None
+
+def get_drawing_link(art):
+    """Шукає PDF за артикулом у папці Drive"""
+    if not art: return None
+    service = get_drive_service()
+    if not service: return None
+    try:
+        # Шукаємо файли, що містять артикул у назві
+        query = f"'{FOLDER_DRAWINGS_ID}' in parents and name contains '{art}' and trashed = false"
+        results = service.files().list(q=query, fields="files(id, name, webViewLink)").execute()
+        files = results.get('files', [])
+        return files[0]['webViewLink'] if files else None
+    except: return None
 
 def load_csv(file_id, cols):
     service = get_drive_service()
@@ -56,8 +62,17 @@ def save_csv(file_id, df):
         csv_data = df.to_csv(index=False).encode('utf-8')
         media_body = MediaIoBaseUpload(io.BytesIO(csv_data), mimetype='text/csv', resumable=False)
         service.files().update(fileId=file_id, media_body=media_body).execute()
-        st.toast("Дані синхронізовано ✅")
+        st.toast("Збережено ✅")
     except: st.error("Помилка Drive")
+
+# --- МАТЕМАТИКА ТА СТИЛІ ---
+def safe_float(v):
+    try: return float(str(v).replace(',', '.'))
+    except: return 0.0
+
+def safe_int(v):
+    try: return int(float(v))
+    except: return 1
 
 def get_card_style(status):
     styles = {
@@ -90,9 +105,8 @@ with st.sidebar:
     st.title("🏢 МЕНЮ")
     menu = st.radio("Навігація:", ["📋 Замовлення", "⚙️ Налаштування", "📐 Каталог креслень", "🏗️ Матеріали"])
     st.divider()
-    st.caption(f"Користувач: {st.session_state.auth['email']}")
     st.caption(f"Роль: {st.session_state.auth['role']}")
-    if st.button("🚪 Вийти"):
+    if st.button("🚪 Вихід"):
         del st.session_state.auth
         st.rerun()
 
@@ -141,8 +155,19 @@ if menu == "📋 Замовлення":
             with c_info:
                 t_sum = 0
                 for it in items:
-                    st.markdown(f"🔹 **{it.get('назва')}** ({it.get('арт')}) — {it.get('к-ть')} шт × {it.get('ціна')} = **{it.get('сума')}**")
+                    art_code = str(it.get('арт', '')).strip()
+                    pdf_link = get_drawing_link(art_code) if art_code else None
+                    
+                    # Рядок товару з кнопкою PDF
+                    col_t1, col_t2 = st.columns([4.5, 1.5])
+                    with col_t1:
+                        st.markdown(f"🔹 **{it.get('назва')}** ({art_code}) — {it.get('к-ть')} шт × {it.get('ціна')} = **{it.get('сума')}**")
+                    with col_t2:
+                        if pdf_link:
+                            st.link_button("📕 PDF Креслення", pdf_link, use_container_width=True)
+                    
                     t_sum += safe_float(it.get('сума'))
+                
                 if row['Коментар']: st.caption(f"💬 {row['Коментар']}")
                 st.write(f"**Разом: {t_sum} грн** | Аванс: {row['Аванс']}")
             
@@ -154,8 +179,9 @@ if menu == "📋 Замовлення":
                     save_csv(ORDERS_CSV_ID, df); st.rerun()
 
             if can_edit:
-                with st.expander("📂 Розгорнути"):
+                with st.expander("📂 Редагувати замовлення"):
                     with st.form(f"f_edit_{idx}"):
+                        # ... логіка редагування (без змін для стабільності)
                         st.write("👤 **Клієнт**")
                         r1c1, r1c2, r1c3, r1c4 = st.columns(4)
                         e_cl, e_ph, e_ct, e_tt = r1c1.text_input("Клієнт", row['Клієнт']), r1c2.text_input("Телефон", row['Телефон']), r1c3.text_input("Місто", row['Місто']), r1c4.text_input("ТТН", row['ТТН'])
@@ -201,27 +227,20 @@ elif menu == "⚙️ Налаштування":
             if new_pass:
                 u_df.loc[u_df['email'] == my_email, 'password'] = new_pass
                 save_csv(USERS_CSV_ID, u_df); st.success("Пароль змінено!")
-            else: st.warning("Введіть пароль")
 
     if my_role == "Супер Адмін":
         st.divider()
         st.subheader("🔴 Зона ризику")
-        with st.expander("Керування базою замовлень"):
-            st.warning("Увага! Ця дія видалить УСІ замовлення з бази назавжди.")
-            if st.button("❌ ОЧИСТИТИ БАЗУ ЗАМОВЛЕНЬ"):
-                st.session_state.confirm_delete = True
-            
-            if st.session_state.get('confirm_delete'):
-                st.error("Ви впевнені? Це неможливо буде скасувати.")
-                c1, c2 = st.columns(2)
-                if c1.button("ТАК, ВИДАЛИТИ ВСЕ"):
-                    empty_df = pd.DataFrame(columns=COLS)
-                    save_csv(ORDERS_CSV_ID, empty_df)
-                    st.session_state.confirm_delete = False
-                    st.rerun()
-                if c2.button("СКАСУВАТИ"):
-                    st.session_state.confirm_delete = False
-                    st.rerun()
+        if st.button("❌ ОЧИСТИТИ БАЗУ ЗАМОВЛЕНЬ"):
+            st.session_state.confirm_delete = True
+        if st.session_state.get('confirm_delete'):
+            st.error("Видалити всі замовлення?")
+            c1, c2 = st.columns(2)
+            if c1.button("ТАК"):
+                save_csv(ORDERS_CSV_ID, pd.DataFrame(columns=COLS))
+                st.session_state.confirm_delete = False; st.rerun()
+            if c2.button("НІ"):
+                st.session_state.confirm_delete = False; st.rerun()
 
 # --- ІНШІ СТОРІНКИ ---
 elif menu == "📐 Каталог креслень": st.info("🚧 У розробці")
