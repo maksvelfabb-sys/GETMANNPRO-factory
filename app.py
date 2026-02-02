@@ -79,40 +79,66 @@ def get_card_style(status):
     }
     return styles.get(status, "background-color: #FAFAFA; border: 1px solid #D1D1D1;")
 
-# --- АВТОРИЗАЦІЯ (Build 4.77) ---
+import time # Додайте в імпорт на початку файлу
+
+# --- ОНОВЛЕНА ФУНКЦІЯ ЗАВАНТАЖЕННЯ (Build 4.78) ---
+def load_csv(file_id, cols):
+    service = get_drive_service()
+    if not service: return pd.DataFrame(columns=cols)
+    try:
+        # Примусове ігнорування кешу Google Drive через metadata
+        request = service.files().get_media(fileId=file_id)
+        fh = io.BytesIO()
+        downloader = MediaIoBaseDownload(fh, request)
+        done = False
+        while not done: _, done = downloader.next_chunk()
+        fh.seek(0)
+        # Читаємо файл, видаляючи можливі пусті рядки
+        df = pd.read_csv(fh, dtype=str).dropna(how='all').fillna("")
+        for c in cols:
+            if c not in df.columns: df[c] = ""
+        return df[cols]
+    except Exception as e:
+        st.error(f"Помилка Drive: {e}")
+        return pd.DataFrame(columns=cols)
+
+# --- АВТОРИЗАЦІЯ З ДІАГНОСТИКОЮ ---
 if 'auth' not in st.session_state:
     st.title("🏭 GETMANN ERP")
     with st.container(border=True):
-        # Очищаємо ввід користувача від випадкових пробілів
         e_input = st.text_input("Логін (Email)").strip().lower()
         p_input = st.text_input("Пароль", type="password").strip()
         
         if st.button("Увійти", use_container_width=True):
-            # 1. ПЕРЕВІРКА ВАС (СУПЕР АДМІН)
+            # Очищуємо всі види кешу Streamlit
+            st.cache_data.clear()
+            
+            # 1. СУПЕР АДМІН
             if e_input == "maksvel.fabb@gmail.com" and p_input == "1234":
                 st.session_state.auth = {'email': e_input, 'role': 'Супер Адмін'}
-                st.cache_data.clear()
                 st.rerun()
             
-            # 2. ПЕРЕВІРКА ІНШИХ (З ФАЙЛУ)
-            st.cache_data.clear() 
+            # 2. ПЕРЕВІРКА ТАБЛИЦІ
             u_df = load_csv(USERS_CSV_ID, USER_COLS)
             
-            # ОЧИЩЕННЯ ДАНИХ У ТАБЛИЦІ (щоб уникнути помилок формату)
+            # ДІАГНОСТИКА (тільки якщо ввів Супер Адмін або спец. пароль для перевірки)
+            if e_input == "debug":
+                st.write("📊 Дані в таблиці, які бачить програма:")
+                st.dataframe(u_df) 
+            
+            # Нормалізація
             u_df['email'] = u_df['email'].str.strip().str.lower()
             u_df['password'] = u_df['password'].astype(str).str.strip()
             
-            # Шукаємо користувача
             user_match = u_df[(u_df['email'] == e_input) & (u_df['password'] == p_input)]
             
             if not user_match.empty:
                 st.session_state.auth = user_match.iloc[0].to_dict()
-                st.success(f"Вхід виконано! Роль: {st.session_state.auth['role']}")
                 st.rerun()
             else:
-                # Виводимо підказку для налагодження (тільки якщо ви самі тестуєте)
-                st.error("❌ Доступ обмежено.")
-                st.info("Переконайтеся, що в таблиці немає зайвих пробілів і пароль вказано вірно.")
+                st.error("❌ Доступ обмежено")
+                # Якщо ви намагаєтесь зайти і не виходить, введіть 'debug' у поле логіна
+                # щоб побачити, що саме завантажилось із Google Drive.
     st.stop()
 
 # --- SIDEBAR МЕНЮ ---
@@ -298,6 +324,7 @@ def save_csv(file_id, df):
         st.toast("Дані синхронізовано з хмарою ✅")
     except Exception as e:
         st.error(f"Помилка Drive: {e}")
+
 
 
 
