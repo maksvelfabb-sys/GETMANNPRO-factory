@@ -160,4 +160,23 @@ with tabs[0]:
 with tabs[1]:
     if role == "Супер Адмін":
         st.subheader("👥 Користувачі")
-        ed_u = st.data_editor(st.session_state.
+        ed_u = st.data_editor(st.session_state.users_df, num_rows="dynamic")
+        if st.button("💾 Зберегти список користувачів"): 
+            save_csv(USERS_CSV_ID, ed_u)
+        
+        st.divider()
+        st.subheader("⚠️ Небезпечна зона")
+        st.warning("Очищення видалить ВСІ замовлення з бази назавжди без можливості відновлення.")
+        
+        confirm = st.checkbox("Я розумію наслідки і хочу очистити базу замовлень")
+        if confirm:
+            if st.button("🔥 ОЧИСТИТИ ВСІ ЗАМОВЛЕННЯ", type="primary"):
+                empty_df = pd.DataFrame(columns=COLS)
+                save_csv(ORDERS_CSV_ID, empty_df)
+                st.session_state.df = empty_df
+                st.success("Базу замовлень повністю очищено!")
+                st.rerun()
+    else:
+        st.error("Доступ тільки для Супер Адміна")
+
+st.sidebar.button("🚪 Вихід", on_click=lambda: st.session_state.clear())
