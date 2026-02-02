@@ -38,34 +38,30 @@ def load_csv(file_id, cols):
         return df[cols]
     except: return pd.DataFrame(columns=cols)
 
-def get_drawing_link(art):
-    """Шукає PDF файл за артикулом (наприклад, 20WS.8247)"""
+def get_pdf_link(art):
+    """Шукає PDF за артикулом і повертає чисте посилання"""
     if not art or str(art).strip() in ["", "nan"]: return None
     service = get_drive_service()
-    if not service: return None
     try:
-        # Пошук файлу за назвою в конкретній папці
         q = f"'{FOLDER_DRAWINGS_ID}' in parents and name contains '{str(art).strip()}' and trashed = false"
-        results = service.files().list(q=q, fields="files(id, name, webViewLink)").execute()
-        files = results.get('files', [])
-        if files:
-            # Повертаємо посилання на перегляд файлу
-            return files[0].get('webViewLink')
-        return None
+        res = service.files().list(q=q, fields="files(webViewLink)").execute()
+        files = res.get('files', [])
+        return files[0]['webViewLink'] if files else None
     except: return None
 
 # --- АВТОРИЗАЦІЯ ---
 if 'auth' not in st.session_state:
     st.title("🏭 GETMANN ERP")
-    e_in = st.text_input("Логін").lower()
-    p_in = st.text_input("Пароль", type="password")
-    if st.button("Увійти"):
-        if e_in == "maksvel.fabb@gmail.com" and p_in == "1234":
-            st.session_state.auth = True
-            st.rerun()
+    with st.form("login"):
+        e = st.text_input("Логін").lower()
+        p = st.text_input("Пароль", type="password")
+        if st.form_submit_button("Увійти"):
+            if e == "maksvel.fabb@gmail.com" and p == "1234":
+                st.session_state.auth = True
+                st.rerun()
     st.stop()
 
-# --- ЖУРНАЛ ---
+# --- ВІДОБРАЖЕННЯ ---
 df = load_csv(ORDERS_CSV_ID, COLS)
 st.header("📋 Журнал замовлень")
 
@@ -77,19 +73,26 @@ for idx, row in df.iloc[::-1].iterrows():
         except: items = []
         
         for i, it in enumerate(items):
-            col_txt, col_btn = st.columns([3, 1])
+            col_t, col_b = st.columns([3, 1])
             art = str(it.get('арт', '')).strip()
-            col_txt.write(f"🔹 {it.get('назва')} ({art})")
+            col_t.write(f"🔹 {it.get('назва')} (**{art}**)")
             
-            # --- БЕЗПЕЧНИЙ ВИКЛИК ПОСИЛАННЯ ---
+            # --- НОВИЙ МЕТОД: ВИКОРИСТОВУЄМО JS ДЛЯ ВІДКРИТТЯ ---
             if art:
-                link = get_drawing_link(art)
+                link = get_pdf_link(art)
                 if link:
-                    # Тільки якщо посилання існує і це рядок, малюємо кнопку
-                    col_btn.link_button("📕 ВІДКРИТИ PDF", url=str(link), use_container_width=True, key=f"btn_{row['ID']}_{i}")
+                    # Створюємо кнопку, яка виглядає як звичайна, але працює через HTML
+                    link_html = f'''
+                        <a href="{link}" target="_blank" style="text-decoration: none;">
+                            <div style="background-color: #ff4b4b; color: white; padding: 8px 16px; border-radius: 5px; text-align: center; font-weight: bold;">
+                                📕 ВІДКРИТИ PDF
+                            </div>
+                        </a>
+                    '''
+                    col_b.markdown(link_html, unsafe_allow_html=True)
                 else:
-                    col_btn.button("⚠️ Немає PDF", disabled=True, use_container_width=True, key=f"none_{row['ID']}_{i}")
+                    col_b.button("❌ Немає PDF", disabled=True, key=f"no_{idx}_{i}", use_container_width=True)
             else:
-                col_btn.button("❌ Без арту", disabled=True, use_container_width=True, key=f"empty_{row['ID']}_{i}")
+                col_b.button("⚪ Без арту", disabled=True, key=f"empty_{idx}_{i}", use_container_width=True)
 
-        st.caption(f"Статус: {row['Готовність']}")
+        st.caption(f"Статус: {row['Готовність']} | Артикул на кресленні: 20WS.8247")
