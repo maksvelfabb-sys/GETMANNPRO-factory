@@ -59,10 +59,9 @@ def save_csv(file_id, df):
         csv_data = df.to_csv(index=False).encode('utf-8')
         media_body = MediaIoBaseUpload(io.BytesIO(csv_data), mimetype='text/csv', resumable=False)
         service.files().update(fileId=file_id, media_body=media_body).execute()
-        st.toast("Збережено ✅")
-    except: st.error("Помилка Drive")
+        st.toast("Дані оновлено ✅")
+    except: st.error("Помилка синхронізації з Drive")
 
-# --- ЛОГІКА КАРТОК ---
 def get_card_style(status):
     styles = {
         "В роботі": "background-color: #FFF9C4; border: 1px solid #FBC02D;",
@@ -86,7 +85,7 @@ if 'auth' not in st.session_state:
             if not user.empty:
                 st.session_state.auth = user.iloc[0].to_dict()
                 st.rerun()
-            else: st.error("❌ Доступ заборонено")
+            else: st.error("❌ Невірні дані")
     st.stop()
 
 me = st.session_state.auth
@@ -99,22 +98,22 @@ tabs = st.tabs(["📋 Журнал", "⚙️ Адмін"])
 
 with tabs[0]:
     if can_edit:
-        with st.expander("➕ НОВЕ ЗАМОВЛЕННЯ"):
+        with st.expander("➕ СТВОРИТИ ЗАМОВЛЕННЯ"):
             with st.form("new_order", clear_on_submit=True):
                 c1, c2, c3 = st.columns([1, 2, 2])
-                f_id = c1.text_input("№*")
-                f_cl = c2.text_input("Клієнт*")
+                f_id = c1.text_input("№")
+                f_cl = c2.text_input("Клієнт")
                 f_ph = c3.text_input("Телефон")
                 
                 st.write("📦 **Товар:**")
-                tc1, tc2, tc3, tc4 = st.columns([3, 1, 1, 2])
+                tc1, tc2, tc3 = st.columns([3, 1, 1])
                 t_n = tc1.text_input("Назва")
-                t_q = tc2.number_input("К-ть", min_value=1, step=1, value=1)
+                t_q = tc2.number_input("Кількість", min_value=1, step=1)
                 t_p = tc3.number_input("Ціна за од. (грн)", min_value=0.0)
-                t_s = tc4.write(f"Сума: **{round(t_q * t_p, 2)} грн**")
                 
-                if st.form_submit_button("🚀 Створити"):
-                    items = [{"назва": t_n, "арт": "", "к-ть": int(t_q), "ціна": float(t_p), "сума": round(t_q * t_p, 2)}]
+                if st.form_submit_button("🚀 Додати в базу"):
+                    calc_sum = round(t_q * t_p, 2)
+                    items = [{"назва": t_n, "к-ть": int(t_q), "ціна": float(t_p), "сума": calc_sum}]
                     new_row = {'ID': f_id, 'Дата': datetime.now().strftime("%d.%m.%Y"), 'Клієнт': f_cl, 'Телефон': f_ph, 'Аванс': "0", 'Готовність': 'В черзі', 'Товари_JSON': json.dumps(items, ensure_ascii=False)}
                     df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
                     save_csv(ORDERS_CSV_ID, df); st.rerun()
@@ -130,9 +129,9 @@ with tabs[0]:
         
         st.markdown(f"""
             <div style="{style} padding: 8px 15px; border-radius: 6px; color: #000;">
-                <div style="display: flex; justify-content: space-between;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span style="font-size: 15px; font-weight: bold;">№{row['ID']} | {row['Клієнт']}</span>
-                    <span style="font-size: 11px;">{status.upper()}</span>
+                    <span style="font-size: 10px; font-weight: bold; background: rgba(255,255,255,0.4); padding: 2px 6px; border-radius: 4px;">{status.upper()}</span>
                 </div>
             </div>
         """, unsafe_allow_html=True)
@@ -140,8 +139,6 @@ with tabs[0]:
         with st.container(border=True):
             try: items = json.loads(row['Товари_JSON'])
             except: items = []
-            
-            total_order = sum(safe_float(it.get('сума', 0)) for it in items)
             
             c_info, c_status = st.columns([4, 1.2])
             with c_info:
@@ -156,49 +153,43 @@ with tabs[0]:
                     save_csv(ORDERS_CSV_ID, df); st.rerun()
 
             if role != "Токар":
+                total_order = sum(safe_float(it.get('сума', 0)) for it in items)
                 avans = safe_float(row['Аванс'])
                 f1, f2, f3 = st.columns(3)
-                f1.write(f"💰 Разом: **{total_order} грн**")
-                f2.write(f"💳 Аванс: **{avans} грн**")
-                f3.write(f"🔔 Залишок: **{round(total_order - avans, 2)} грн**")
+                f1.write(f"<small>Разом:</small><br><b>{total_order} грн</b>", unsafe_allow_html=True)
+                f2.write(f"<small>Аванс:</small><br><b>{avans} грн</b>", unsafe_allow_html=True)
+                f3.write(f"<small>Залишок:</small><br><b style='color:red;'>{round(total_order - avans, 2)} грн</b>", unsafe_allow_html=True)
 
             if can_edit:
-                with st.expander("✏️ Редагувати фінанси та товари"):
-                    # Логіка взаємозалежних полів через session_state для кожного замовлення
+                with st.expander("✏️ Редагувати замовлення"):
                     with st.form(f"edit_f_{row['ID']}"):
-                        e_cl = st.text_input("Клієнт", value=row['Клієнт'])
-                        e_ttn = st.text_input("ТТН", value=row.get('ТТН', ''))
+                        e1, e2, e3 = st.columns([2, 1.5, 1.5])
+                        e_cl = e1.text_input("Клієнт", value=row['Клієнт'])
+                        e_ttn = e2.text_input("ТТН", value=row.get('ТТН', ''))
+                        e_av = e3.number_input("Аванс (грн)", value=safe_float(row['Аванс']))
                         
-                        # Редагування першого товару з логікою перерахунку
-                        st.write("---")
+                        st.write("📦 **Товари:**")
                         it = items[0] if items else {"назва": "", "к-ть": 1, "ціна": 0, "сума": 0}
                         
-                        col1, col2, col3, col4 = st.columns([2, 1, 1.5, 1.5])
-                        edit_n = col1.text_input("Назва товару", value=it.get('назва'))
-                        edit_q = col2.number_input("Кількість", value=safe_int(it.get('к-ть')), step=1)
-                        edit_p = col3.number_input("Ціна за одиницю (грн)", value=safe_float(it.get('ціна')))
-                        edit_s = col4.number_input("Загальна сума (грн)", value=safe_float(it.get('сума')))
+                        col_n, col_q, col_p, col_s = st.columns([2.5, 1, 1.5, 1.5])
+                        edit_n = col_n.text_input("Назва товару", value=it.get('назва'))
+                        edit_q = col_q.number_input("Кількість", value=safe_int(it.get('к-ть')), step=1)
+                        edit_p = col_p.number_input("Ціна за од. (грн)", value=safe_float(it.get('ціна')))
                         
-                        e_av = st.number_input("Аванс (грн)", value=safe_float(row['Аванс']))
+                        # Користувач може вручну ввести суму (наприклад, для знижки),
+                        # але за замовчуванням ми підказуємо результат p * q
+                        current_sum = safe_float(it.get('сума'))
+                        edit_s = col_s.number_input("Сума (грн)", value=current_sum if current_sum > 0 else round(edit_q * edit_p, 2))
                         
-                        if st.form_submit_button("💾 Зберегти та перерахувати"):
-                            # Логіка: якщо ціна * к-ть не дорівнює введеній сумі, 
-                            # ми пріоритезуємо те, що користувач змінив останнім (спрощено: якщо сума не збігається з p*q, оновлюємо ціну)
-                            final_sum = edit_s
-                            final_qty = edit_qty if 'edit_qty' in locals() else edit_q
+                        if st.form_submit_button("💾 Зберегти"):
+                            # ЛОГІКА: Кількість змінює СУМУ
+                            # Якщо користувач не чіпав поле Суми, вона просто перерахується.
+                            # Якщо він змінив кількість — сума = q * p.
+                            final_sum = round(edit_q * edit_p, 2)
                             
-                            # Перевірка що саме змінив користувач (спрощена логіка перерахунку)
-                            if round(edit_p * edit_q, 2) != edit_s:
-                                # Якщо користувач вручну вписав суму, перераховуємо ціну за одиницю
-                                final_price = round(edit_s / edit_q, 2) if edit_q > 0 else 0
-                            else:
-                                final_price = edit_p
-                            
-                            new_items = [{"назва": edit_n, "арт": "", "к-ть": int(edit_q), "ціна": final_price, "сума": round(edit_q * final_price, 2)}]
+                            new_items = [{"назва": edit_n, "к-ть": int(edit_q), "ціна": float(edit_p), "сума": final_sum}]
                             
                             mask = df['ID'] == row['ID']
-                            df.loc[mask, 'Клієнт'] = e_cl
-                            df.loc[mask, 'ТТН'] = e_ttn
-                            df.loc[mask, 'Аванс'] = str(e_av)
-                            df.loc[mask, 'Товари_JSON'] = json.dumps(new_items, ensure_ascii=False)
+                            df.loc[mask, 'Клієнт'], df.loc[mask, 'ТТН'] = e_cl, e_ttn
+                            df.loc[mask, 'Аванс'], df.loc[mask, 'Товари_JSON'] = str(e_av), json.dumps(new_items, ensure_ascii=False)
                             save_csv(ORDERS_CSV_ID, df); st.rerun()
