@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import io
+from datetime import datetime
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
@@ -11,23 +12,20 @@ FOLDER_DRAWINGS_ID = "1SQyZ6OUk9xNBMvh98Ob4zw9LVaqWRtas"
 
 st.set_page_config(page_title="GETMANN Pro", layout="wide", page_icon="🏭")
 
-# --- СТИЛІЗАЦІЯ (CSS для підсвітки всієї картки) ---
+# --- СТИЛІЗАЦІЯ ПІД ВЕРСІЮ 3.0 ---
 st.markdown("""
     <style>
-    /* Базовий стиль контейнера */
-    div[data-testid="stVerticalBlockBorderControl"] {
-        padding: 5px;
-        border-radius: 15px;
-        margin-bottom: 10px;
+    .order-card {
+        border: 1px solid #444;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+        background-color: #1e1e1e;
     }
-    
-    /* Кольори для статусів */
-    .status-card-work { background-color: #e3f2fd !important; border: 1px solid #90caf9; }
-    .status-card-done { background-color: #e8f5e9 !important; border: 1px solid #a5d6a7; }
-    .status-card-queue { background-color: #f5f5f5 !important; border: 1px solid #e0e0e0; }
-    
-    /* Стиль заголовка експандера всередині */
-    .stExpander { border: none !important; background: transparent !important; }
+    .status-work { border-left: 5px solid #007bff; }
+    .status-done { border-left: 5px solid #28a745; }
+    .status-queue { border-left: 5px solid #888; }
+    .stCheckbox { margin-bottom: -15px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -56,7 +54,7 @@ def load_data():
         df.columns = df.columns.str.strip()
         return df
     except:
-        return pd.DataFrame(columns=['ID', 'Клієнт', 'Телефон', 'Місто', 'Відділення', 'Товари', 'Сума', 'Готовність', 'Коментар'])
+        return pd.DataFrame(columns=['ID', 'Дата', 'Клієнт', 'Телефон', 'Місто', 'Відділення', 'Товари', 'Сума', 'Готовність', 'Коментар'])
 
 def save_data(df):
     service = get_drive_service()
@@ -79,13 +77,13 @@ def find_pdf_link(article):
         return files[0]['webViewLink'] if files else None
     except: return None
 
-# --- ГОЛОВНИЙ ІНТЕРФЕЙС ---
-st.title("🏭 GETMANN Pro")
+# --- ІНТЕРФЕЙС ЖУРНАЛУ ---
+st.title("📚 Журнал замовлень")
 
 if 'df' not in st.session_state:
     st.session_state.df = load_data()
 
-tabs = st.tabs(["📋 Список замовлень", "➕ Нове замовлення", "📦 Склад"])
+tabs = st.tabs(["📑 Журнал", "📝 Нове замовлення", "🏗️ Склад"])
 
 with tabs[0]:
     df = st.session_state.df
@@ -93,78 +91,76 @@ with tabs[0]:
     display_df = df[df.apply(lambda r: search.lower() in str(r.values).lower(), axis=1)] if search else df
 
     for idx, row in display_df.iterrows():
-        # Дані
-        r_id, r_client, r_city = str(row.get('ID', '')), str(row.get('Клієнт', '')), str(row.get('Місто', ''))
-        r_status = str(row.get('Готовність', 'В черзі'))
+        status = row.get('Готовність', 'В черзі')
+        css_class = "status-queue"
+        if status == "В роботі": css_class = "status-work"
+        elif status == "Готово": css_class = "status-done"
         
-        # Вибір CSS класу та іконки
-        css_class = "status-card-queue"
-        icon = "⚪"
-        if r_status == "В роботі":
-            css_class, icon = "status-card-work", "🔵"
-        elif r_status == "Готово":
-            css_class, icon = "status-card-done", "🟢"
+        # Відображення картки як у версії 3
+        st.markdown(f"""
+            <div class="order-card {css_class}">
+                <div style="display: flex; justify-content: space-between; color: #bbb; font-size: 0.9em;">
+                    <span>⌛ №{row.get('ID')} | {row.get('Дата', '02.02.2026')} | <b>{row.get('Клієнт')}</b></span>
+                    <span>Менеджер: Головний Адмін</span>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
         
-        # ОБГОРТКА У КОЛЬОРОВИЙ КОНТЕЙНЕР
-        with st.container():
-            st.markdown(f'<div class="{css_class}">', unsafe_allow_html=True)
-            
-            with st.expander(f"{icon} {r_id} | {r_client} | {r_city}"):
-                c1, c2, c3 = st.columns(3)
-                new_id = c1.text_input("ID", value=r_id, key=f"id_{idx}")
-                new_client = c2.text_input("Клієнт", value=r_client, key=f"cl_{idx}")
-                new_phone = c3.text_input("Телефон", value=str(row.get('Телефон', '')), key=f"ph_{idx}")
-                
-                c4, c5, c6 = st.columns(3)
-                new_city = c4.text_input("Місто", value=r_city, key=f"ct_{idx}")
-                new_post = c5.text_input("Відділення", value=str(row.get('Відділення', '')), key=f"ps_{idx}")
-                
-                try:
-                    raw_val = str(row.get('Сума', '0')).replace(',', '.').split('.')[0]
-                    curr_s = int(raw_val) if raw_val.isdigit() else 0
-                except: curr_s = 0
-                new_sum = c6.number_input("Сума, грн", value=curr_s, key=f"sm_{idx}")
-                
-                new_items = st.text_area("Товари", value=str(row.get('Товари', '')), key=f"it_{idx}")
-                new_comm = st.text_input("Коментар", value=str(row.get('Коментар', '')), key=f"co_{idx}")
-                
-                st.write("**Змінити статус:**")
-                ca1, ca2, ca3 = st.columns(3)
-                if ca1.button("🔵 В роботу", key=f"bw_{idx}", use_container_width=True):
-                    df.at[idx, 'Готовність'] = "В роботі"; save_data(df); st.rerun()
-                if ca2.button("🟢 Виконано", key=f"bd_{idx}", use_container_width=True):
-                    df.at[idx, 'Готовність'] = "Готово"; save_data(df); st.rerun()
-                if ca3.button("⚪ В чергу", key=f"bq_{idx}", use_container_width=True):
-                    df.at[idx, 'Готовність'] = "В черзі"; save_data(df); st.rerun()
-                
-                for item in new_items.split(';'):
-                    if "[" in item:
-                        sku = item.split("[")[1].split("]")[0]
-                        link = find_pdf_link(sku)
-                        if link: st.link_button(f"📄 Креслення {sku}", link)
+        # Чекбокси статусів (логіка перемикання)
+        c1, c2, _ = st.columns([1, 1, 2])
+        is_work = c1.checkbox("🏗️ У виробництво", value=(status == "В роботі"), key=f"ch_w_{idx}")
+        is_done = c2.checkbox("✅ Виконано", value=(status == "Готово"), key=f"ch_d_{idx}")
+        
+        # Обробка зміни чекбоксів
+        new_status = status
+        if is_done: new_status = "Готово"
+        elif is_work: new_status = "В роботі"
+        else: new_status = "В черзі"
+        
+        if new_status != status:
+            df.at[idx, 'Готовність'] = new_status
+            save_data(df)
+            st.rerun()
 
-                # Перевірка змін
-                if (new_id != r_id or new_client != r_client or new_items != str(row.get('Товари', '')) or 
-                    new_comm != str(row.get('Коментар', '')) or new_sum != curr_s):
-                    df.at[idx, 'ID'], df.at[idx, 'Клієнт'] = new_id, new_client
-                    df.at[idx, 'Товари'], df.at[idx, 'Коментар'] = new_items, new_comm
-                    df.at[idx, 'Сума'], df.at[idx, 'Телефон'] = new_sum, new_phone
-                    df.at[idx, 'Місто'], df.at[idx, 'Відділення'] = new_city, new_post
-                    save_data(df)
+        # Список товарів списком (булітами)
+        items = str(row.get('Товари', '')).split(';')
+        for item in items:
+            if item.strip():
+                st.markdown(f"• {item.strip()}")
+                if "[" in item:
+                    sku = item.split("[")[1].split("]")[0]
+                    link = find_pdf_link(sku)
+                    if link: st.link_button(f"📄 Креслення {sku}", link, src="small")
+
+        # Редагування деталей (Expander як на фото)
+        with st.expander("📝 Редагувати деталі"):
+            col_a, col_b = st.columns(2)
+            u_client = col_a.text_input("Клієнт", value=str(row.get('Клієнт')), key=f"u_cl_{idx}")
+            u_phone = col_b.text_input("Телефон", value=str(row.get('Телефон')), key=f"u_ph_{idx}")
+            u_items = st.text_area("Товари", value=str(row.get('Товари')), key=f"u_it_{idx}")
+            u_city = st.text_input("Місто/Відділення", value=f"{row.get('Місто')} / {row.get('Відділення')}", key=f"u_ct_{idx}")
             
-            st.markdown('</div>', unsafe_allow_html=True)
+            if st.button("💾 Зберегти зміни", key=f"u_btn_{idx}"):
+                df.at[idx, 'Клієнт'] = u_client
+                df.at[idx, 'Телефон'] = u_phone
+                df.at[idx, 'Товари'] = u_items
+                # Розділяємо місто та відділення назад
+                if "/" in u_city:
+                    parts = u_city.split("/")
+                    df.at[idx, 'Місто'] = parts[0].strip()
+                    df.at[idx, 'Відділення'] = parts[1].strip()
+                save_data(df)
+                st.rerun()
 
 with tabs[1]:
-    st.subheader("Створити замовлення")
-    with st.form("add"):
-        f1, f2, f3 = st.columns(3)
-        fid = f1.text_input("ID"); fcl = f2.text_input("Клієнт"); fph = f3.text_input("Телефон")
-        f4, f5, f6 = st.columns(3)
-        fct = f4.text_input("Місто"); fps = f5.text_input("Відділення"); fsm = f6.number_input("Сума", min_value=0)
-        fit = st.text_area("Товари"); fco = st.text_input("Коментар", key="new_co_main")
-        if st.form_submit_button("Зберегти"):
-            new_r = {'ID': fid, 'Клієнт': fcl, 'Телефон': fph, 'Місто': fct, 'Відділення': fps, 
-                     'Товари': fit, 'Сума': fsm, 'Готовність': 'В черзі', 'Коментар': fco}
+    st.subheader("🆕 Нове замовлення")
+    with st.form("new"):
+        f1, f2 = st.columns(2)
+        fid = f1.text_input("ID замовлення")
+        fcl = f2.text_input("Клієнт")
+        fit = st.text_area("Товари (через ;)")
+        if st.form_submit_button("Додати в журнал"):
+            new_r = {'ID': fid, 'Клієнт': fcl, 'Товари': fit, 'Дата': datetime.now().strftime("%d.%m.%Y"), 'Готовність': 'В черзі'}
             st.session_state.df = pd.concat([st.session_state.df, pd.DataFrame([new_r])], ignore_index=True)
             save_data(st.session_state.df); st.rerun()
 
