@@ -10,7 +10,6 @@ from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 ORDERS_CSV_ID = "1Ws7rL1uyWcYbLeXsmqmaijt98Gxo6k3i"
 USERS_CSV_ID = "1ibrEFKOyvt5xgC_vSMhvDmNxdO1pVYfr4a-TqgJM82Y"
 FOLDER_DRAWINGS_ID = "1SQyZ6OUk9xNBMvh98Ob4zw9LVaqWRtas"
-# Додано ТТН до списку колонок
 COLS = ['ID', 'Дата', 'Клієнт', 'Телефон', 'Місто', 'ТТН', 'Товари_JSON', 'Аванс', 'Готовність', 'Коментар']
 
 st.set_page_config(page_title="GETMANN ERP", layout="wide", page_icon="🏭")
@@ -100,7 +99,7 @@ tabs = st.tabs(["📋 Журнал", "⚙️ Адмін"])
 
 with tabs[0]:
     if can_edit:
-        with st.expander("➕ НОВЕ ЗАМОВЛЕННЯ (Компактно)"):
+        with st.expander("➕ НОВЕ ЗАМОВЛЕННЯ"):
             numeric_ids = pd.to_numeric(df['ID'], errors='coerce').dropna()
             next_id = int(numeric_ids.max() + 1) if not numeric_ids.empty else 1001
             with st.form("new_order", clear_on_submit=True):
@@ -114,9 +113,9 @@ with tabs[0]:
                 f_ttn = c5.text_input("ТТН")
                 f_av = c6.number_input("Аванс", min_value=0.0)
                 
-                f_cm = st.text_input("Коментар") # Зробив одним рядком
+                f_cm = st.text_area("Коментар", height=68)
                 
-                st.write("📦 **Товар:**")
+                st.write("📦 **Товари:**")
                 tc1, tc2, tc3, tc4 = st.columns([3, 1, 1, 1])
                 t_n, t_a, t_q, t_p = tc1.text_input("Назва"), tc2.text_input("Арт"), tc3.number_input("К-ть", 1), tc4.number_input("Ціна", 0.0)
                 
@@ -136,37 +135,27 @@ with tabs[0]:
         ttn_val = row.get('ТТН', '')
         style = get_card_style(status)
         
-        # ШАПКА КАРТКИ (ТТН додано тут)
         st.markdown(f"""
-            <div style="{style} padding: 8px 15px; border-radius: 6px; margin-bottom: 0px; color: #000; font-family: sans-serif;">
+            <div style="{style} padding: 8px 15px; border-radius: 6px; margin-bottom: 0px; color: #000;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span style="font-size: 16px; font-weight: bold;">№{row['ID']} | {row['Клієнт']} {f'| 📦 ТТН: {ttn_val}' if ttn_val else ''}</span>
-                    <span style="font-size: 12px; font-weight: 700;">{status.upper()}</span>
+                    <span style="font-size: 11px; font-weight: 700;">{status.upper()}</span>
                 </div>
-                <div style="font-size: 13px; opacity: 0.8;">
+                <div style="font-size: 12px; opacity: 0.8;">
                     📞 {row['Телефон']} | 📍 {row['Місто']} | 📅 {row['Дата']}
                 </div>
             </div>
         """, unsafe_allow_html=True)
 
         with st.container(border=True):
-            # Контент картки став щільнішим
             c_main, c_side = st.columns([4, 1.2])
-            
             with c_main:
-                # Товари одним списком
                 try: items = json.loads(row['Товари_JSON'])
                 except: items = []
-                total = 0.0
-                item_list = []
-                for it in items:
-                    q, p = float(it.get('к-ть', 0)), float(it.get('ціна', 0))
-                    total += (q * p)
-                    item_list.append(f"<b>{it.get('назва')}</b> ({it.get('к-ть')}шт)")
+                total = sum(float(it.get('к-ть', 0)) * float(it.get('ціна', 0)) for it in items)
+                item_list = [f"<b>{it.get('назва')}</b> ({it.get('к-ть')}шт)" for it in items]
                 st.markdown(" • ".join(item_list), unsafe_allow_html=True)
-                
-                if row['Коментар']:
-                    st.markdown(f"<small>💬 {row['Коментар']}</small>", unsafe_allow_html=True)
+                if row['Коментар']: st.markdown(f"<small style='color: #444;'>💬 {row['Коментар']}</small>", unsafe_allow_html=True)
 
             with c_side:
                 opts = ["В черзі", "В роботі", "Готовий до відправлення", "Відправлений"]
@@ -175,11 +164,9 @@ with tabs[0]:
                     df.loc[df['ID'] == row['ID'], 'Готовність'] = new_st
                     save_csv(ORDERS_CSV_ID, df); st.rerun()
 
-            # Фінанси та креслення в один рядок
             f1, f2, f3, f4 = st.columns([1, 1, 1, 2])
             if role != "Токар":
-                try: avans = float(str(row['Аванс']).replace(',', '.')) if row['Аванс'] else 0.0
-                except: avans = 0.0
+                avans = float(str(row['Аванс']).replace(',', '.')) if row['Аванс'] else 0.0
                 f1.caption(f"Сплачено: {avans}")
                 f2.caption(f"Залишок: {round(total - avans, 2)}")
             
@@ -187,24 +174,25 @@ with tabs[0]:
             if draws: f4.markdown(f"📎 <small>Креслень: {len(draws)}</small>", unsafe_allow_html=True)
 
             if can_edit:
-                with st.expander("✏️", expanded=False):
+                with st.expander("✏️ Редагувати дані замовлення"):
                     with st.form(f"ed_{row['ID']}"):
-                        e1, e2, e3 = st.columns(3)
-                        e_cl = e1.text_input("Клієнт", value=row['Клієнт'])
-                        e_ph = e2.text_input("Телефон", value=row['Телефон'])
-                        e_ttn = e3.text_input("ТТН", value=row.get('ТТН', ''))
+                        r1c1, r1c2, r1c3 = st.columns(3)
+                        e_cl = r1c1.text_input("Клієнт", value=row['Клієнт'])
+                        e_ph = r1c2.text_input("Телефон", value=row['Телефон'])
+                        e_ttn = r1c3.text_input("ТТН", value=row.get('ТТН', ''))
+                        
+                        r2c1, r2c2 = st.columns([1, 2])
+                        e_ct = r2c1.text_input("Місто", value=row.get('Місто', ''))
+                        e_cm = r2c2.text_input("Коментар", value=row.get('Коментар', ''))
                         
                         e_it = st.data_editor(pd.DataFrame(items), num_rows="dynamic", key=f"det_{idx}")
                         
-                        if st.form_submit_button("Зберегти"):
+                        if st.form_submit_button("Зберегти зміни"):
                             mask = df['ID'] == row['ID']
                             df.loc[mask, 'Клієнт'] = e_cl
                             df.loc[mask, 'Телефон'] = e_ph
+                            df.loc[mask, 'Місто'] = e_ct
                             df.loc[mask, 'ТТН'] = e_ttn
+                            df.loc[mask, 'Коментар'] = e_cm
                             df.loc[mask, 'Товари_JSON'] = json.dumps(e_it.to_dict('records'), ensure_ascii=False)
                             save_csv(ORDERS_CSV_ID, df); st.rerun()
-        st.write("") # Маленький відступ
-
-with tabs[1]:
-    if role == "Супер Адмін":
-        st.data_editor(load_csv(USERS_CSV_ID, ['email', 'password', 'role', 'name']), num_rows="dynamic")
