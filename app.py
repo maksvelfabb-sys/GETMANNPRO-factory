@@ -11,7 +11,7 @@ FOLDER_DRAWINGS_ID = "1SQyZ6OUk9xNBMvh98Ob4zw9LVaqWRtas"  # Папка з PDF
 ORDERS_CSV_ID = "1Ws7rL1uyWcYbLeXsmqmaijt98Gxo6k3i"      # Файл orders.csv
 
 st.set_page_config(
-    page_title="Factory CRM | Build 4.0",
+    page_title="GETMANN Pro | Build 4.0",
     page_icon="🏭",
     layout="wide"
 )
@@ -165,3 +165,4 @@ st.sidebar.image("https://via.placeholder.com/150?text=FACTORY", width=100)
 st.sidebar.markdown("---")
 st.sidebar.write("**Build 4.0 Stable**")
 st.sidebar.write("Хмарна версія")
+
