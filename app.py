@@ -102,20 +102,14 @@ with tabs[0]:
                 f_id = c1.text_input("№*", value=str(next_id))
                 f_cl = c2.text_input("Клієнт*")
                 f_ph = c3.text_input("Телефон")
-                
                 c4, c5, c6 = st.columns([2, 2, 1])
-                f_ct = c4.text_input("Місто")
-                f_ttn = c5.text_input("ТТН")
-                f_av = c6.number_input("Аванс", min_value=0.0)
-                
+                f_ct, f_ttn, f_av = c4.text_input("Місто"), c5.text_input("ТТН"), c6.number_input("Аванс", min_value=0.0)
                 f_cm = st.text_area("Коментар", height=68)
-                
                 st.write("📦 **Товар:**")
-                tc1, tc2, tc3 = st.columns([3, 1, 1])
-                t_n, t_q, t_p = tc1.text_input("Назва"), tc2.number_input("К-ть", 1), tc3.number_input("Ціна", 0.0)
-                
+                tc1, tc2, tc3, tc4 = st.columns([3, 1, 1, 1])
+                t_n, t_a, t_q, t_p = tc1.text_input("Назва"), tc2.text_input("Арт"), tc3.number_input("К-ть", 1, step=1), tc4.number_input("Ціна", 0.0)
                 if st.form_submit_button("🚀 Створити"):
-                    items = [{"назва": t_n, "арт": "", "к-ть": int(t_q), "ціна": float(t_p), "сума": round(t_q * t_p, 2)}]
+                    items = [{"назва": t_n, "арт": t_a, "к-ть": int(t_q), "ціна": float(t_p), "сума": round(t_q * t_p, 2)}]
                     new_row = {'ID': str(f_id), 'Дата': datetime.now().strftime("%d.%m.%Y"), 'Клієнт': f_cl, 'Телефон': str(f_ph), 'Місто': f_ct, 'ТТН': f_ttn, 'Аванс': str(f_av), 'Готовність': 'В черзі', 'Товари_JSON': json.dumps(items, ensure_ascii=False), 'Коментар': f_cm}
                     df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
                     save_csv(ORDERS_CSV_ID, df); st.rerun()
@@ -128,14 +122,28 @@ with tabs[0]:
     for idx, row in df_v.iterrows():
         status = row.get('Готовність', 'В черзі')
         style = get_card_style(status)
+        try: items = json.loads(row['Товари_JSON'])
+        except: items = []
+        it = items[0] if items else {"назва": "", "арт": "", "к-ть": 1, "ціна": 0, "сума": 0}
         
-        st.markdown(f'<div style="{style} padding: 10px 15px; border-radius: 8px; color: #000;"><b>№{row["ID"]} | {row["Клієнт"]}</b></div>', unsafe_allow_html=True)
+        art_val = it.get('арт', '')
+        ttn_val = row.get('ТТН', '')
+
+        # Оновлена шапка: додано ТТН та Артикул
+        st.markdown(f"""
+            <div style="{style} padding: 10px 15px; border-radius: 8px; color: #000; margin-bottom: -5px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 15px; font-weight: bold;">
+                        №{row['ID']} | {row['Клієнт']} 
+                        {f' | <span style="color:#d32f2f;">Арт: {art_val}</span>' if art_val else ''}
+                        {f' | <span style="color:#1565c0;">📦 {ttn_val}</span>' if ttn_val else ''}
+                    </span>
+                    <span style="font-size: 10px; font-weight: bold; background: rgba(255,255,255,0.4); padding: 2px 6px; border-radius: 4px;">{status.upper()}</span>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
 
         with st.container(border=True):
-            try: items = json.loads(row['Товари_JSON'])
-            except: items = []
-            it = items[0] if items else {"назва": "", "арт": "", "к-ть": 1, "ціна": 0, "сума": 0}
-            
             c_info, c_status = st.columns([4, 1.2])
             with c_info:
                 st.markdown(f"🔹 **{it.get('назва')}** — {it.get('к-ть')} шт × {it.get('ціна')} грн = **{it.get('сума')} грн**")
@@ -153,32 +161,27 @@ with tabs[0]:
                     with st.form(f"full_edit_{idx}"):
                         st.write("👤 **Клієнт та логістика**")
                         r1c1, r1c2, r1c3, r1c4 = st.columns(4)
-                        e_cl = r1c1.text_input("Клієнт", value=row['Клієнт'])
-                        e_ph = r1c2.text_input("Телефон", value=row['Телефон'])
-                        e_ct = r1c3.text_input("Місто", value=row['Місто'])
-                        e_tt = r1c4.text_input("ТТН", value=row['ТТН'])
+                        e_cl, e_ph = r1c1.text_input("Клієнт", value=row['Клієнт']), r1c2.text_input("Телефон", value=row['Телефон'])
+                        e_ct, e_tt = r1c3.text_input("Місто", value=row['Місто']), r1c4.text_input("ТТН", value=row['ТТН'])
                         
                         st.write("📦 **Товар та коментар**")
                         r2c1, r2c2, r2c3 = st.columns([3, 1.5, 4])
-                        e_n = r2c1.text_input("Назва", value=it.get('назва'))
-                        e_a = r2c2.text_input("Артикул", value=it.get('арт'))
-                        # Редагування старого коментаря
+                        e_n, e_a = r2c1.text_input("Назва", value=it.get('назва')), r2c2.text_input("Артикул", value=it.get('арт'))
                         e_cm = r2c3.text_area("Коментар", value=row['Коментар'], height=68)
                         
                         st.write("💰 **Фінанси**")
                         f_q, f_p, f_s, f_av = st.columns(4)
                         new_q = f_q.number_input("К-ть", value=safe_int(it.get('к-ть')), step=1)
-                        new_p = f_p.number_input("Ціна за од.", value=safe_float(it.get('ціна')))
-                        new_s = f_s.number_input("Сума (грн)", value=safe_float(it.get('сума')))
-                        new_av = f_av.number_input("Аванс (грн)", value=safe_float(row['Аванс']))
+                        new_p = f_p.number_input("Ціна од.", value=safe_float(it.get('ціна')))
+                        new_s = f_s.number_input("Сума", value=safe_float(it.get('сума')))
+                        new_av = f_av.number_input("Аванс", value=safe_float(row['Аванс']))
                         
                         if st.form_submit_button("💾 Зберегти зміни"):
                             if round(new_s, 2) != round(safe_float(it.get('сума')), 2):
                                 final_s = new_s
                                 final_p = round(new_s / new_q, 2) if new_q > 0 else 0
                             else:
-                                final_p = new_p
-                                final_s = round(new_q * new_p, 2)
+                                final_p, final_s = new_p, round(new_q * new_p, 2)
                             
                             new_it = [{"назва": e_n, "арт": e_a, "к-ть": int(new_q), "ціна": float(final_p), "сума": float(final_s)}]
                             mask = df['ID'] == row['ID']
@@ -191,5 +194,4 @@ with tabs[1]:
     if role == "Супер Адмін":
         if st.button("🔄 Оновити дані з Drive"): st.rerun()
         st.info(f"Користувач: {st.session_state.auth['email']} | Роль: {role}")
-    else:
-        st.warning("Доступ тільки для Адміністраторів")
+    else: st.warning("Доступ обмежений")
