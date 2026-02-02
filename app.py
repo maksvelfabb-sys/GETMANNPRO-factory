@@ -184,4 +184,14 @@ if can_edit:
 if "⚙️ Адмін" in tabs_list:
     with tabs[-1]:
         st.subheader("👥 Користувачі")
-        ed_u =
+        ed_u = st.data_editor(st.session_state.users_df, num_rows="dynamic")
+        if st.button("💾 Зберегти доступ"):
+            save_csv(USERS_CSV_ID, ed_u)
+        if role == "Супер Адмін" and 'history' in st.session_state:
+            st.divider()
+            st.subheader("📜 Лог дій")
+            for entry in reversed(st.session_state.history[-15:]): st.write(entry)
+
+if st.sidebar.button("🚪 Вийти"):
+    del st.session_state.auth
+    st.rerun()
