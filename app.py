@@ -21,29 +21,27 @@ st.set_page_config(
 def get_drive_service():
     try:
         if "gcp_service_account" in st.secrets:
-            # Створюємо копію словника з Secrets
+            # Створюємо копію даних з Secrets
             info = dict(st.secrets["gcp_service_account"])
             
-            # ВИПРАВЛЕННЯ КЛЮЧА:
-            # Прибираємо зайві лапки та виправляємо екрановані переноси рядків
-            key = info["private_key"].replace("\\n", "\n").strip()
-            # Якщо ключ загорнутий у подвійні лапки всередині рядка — прибираємо їх
-            if key.startswith('"') and key.endswith('"'):
-                key = key[1:-1]
-            info["private_key"] = key
+            # 1. Витягуємо ключ
+            raw_key = info["private_key"]
+            
+            # 2. Очищення: перетворюємо текстові \n на справжні переноси
+            # та видаляємо можливі зайві лапки чи пробіли
+            cleaned_key = raw_key.replace("\\n", "\n").strip()
+            
+            # 3. Якщо ключ випадково обгорнутий у зайві лапки - прибираємо
+            if cleaned_key.startswith('"') and cleaned_key.endswith('"'):
+                cleaned_key = cleaned_key[1:-1]
+            
+            info["private_key"] = cleaned_key
             
             creds = service_account.Credentials.from_service_account_info(info)
-        else:
-            # Для локальної розробки
-            import json
-            with open("service_account.json") as f:
-                info = json.load(f)
-            creds = service_account.Credentials.from_service_account_info(info)
-            
-        return build('drive', 'v3', credentials=creds)
+            return build('drive', 'v3', credentials=creds)
     except Exception as e:
-        st.error(f"Помилка авторизації Google: {e}")
-        return None
+        st.error(f"Помилка авторизації: {e}")
+    return None
         
 def load_data():
     """Завантаження бази замовлень CSV з Google Drive"""
@@ -174,6 +172,7 @@ st.sidebar.image("https://via.placeholder.com/150?text=FACTORY", width=100)
 st.sidebar.markdown("---")
 st.sidebar.write("**Build 4.0 Stable**")
 st.sidebar.write("Хмарна версія")
+
 
 
 
