@@ -14,16 +14,17 @@ COLS = ['ID', 'Дата', 'Клієнт', 'Телефон', 'Місто', 'То�
 
 st.set_page_config(page_title="GETMANN ERP", layout="wide", page_icon="🏭")
 
-# --- ОНОВЛЕНА ЛОГІКА КОЛЬОРІВ ---
-def get_status_style(status):
+# --- СТИЛІЗАЦІЯ ВСІЄЇ КАРТКИ ---
+def get_card_style(status):
+    # Повертає кольори фону та рамки залежно від статусу
     if status == "В роботі":
-        return "border: 2px solid #FFD700; background-color: #FFFDE7;" # Жовтий (Процес)
+        return "background-color: #FFF9C4; border: 2px solid #FBC02D;" # Жовтий
     elif status == "Готовий до відправлення":
-        return "border: 2px solid #00BFFF; background-color: #E1F5FE;" # М'який блакитний (Активність)
+        return "background-color: #E1F5FE; border: 2px solid #0288D1;" # Блакитний
     elif status == "Відправлений":
-        return "border: 2px solid #28A745; background-color: #E8F5E9;" # Насичений зелений (Завершено)
+        return "background-color: #C8E6C9; border: 2px solid #388E3C;" # Зелений
     else:
-        return "border: 1px solid #DDD; background-color: #FFFFFF;" # Білий/Сірий (Черга)
+        return "background-color: #F5F5F5; border: 2px solid #BDBDBD;" # Сірий (Черга)
 
 # --- СЕРВІСНІ ФУНКЦІЇ ---
 @st.cache_resource
@@ -60,8 +61,8 @@ def save_csv(file_id, df):
         csv_data = df.to_csv(index=False).encode('utf-8')
         media_body = MediaIoBaseUpload(io.BytesIO(csv_data), mimetype='text/csv', resumable=False)
         service.files().update(fileId=file_id, media_body=media_body).execute()
-        st.toast("Дані синхронізовано ✅")
-    except: st.error("Помилка запису в Drive")
+        st.toast("Статус оновлено ✅")
+    except: st.error("Помилка Drive")
 
 def get_drawings(order_id):
     service = get_drive_service()
@@ -122,82 +123,85 @@ with tabs[0]:
                     save_csv(ORDERS_CSV_ID, df); st.rerun()
 
     st.divider()
-    search = st.text_input("🔍 Швидкий пошук...")
+    search = st.text_input("🔍 Пошук...")
     df_v = df.copy().iloc[::-1]
     if search:
         df_v = df_v[df_v.apply(lambda r: search.lower() in str(r.values).lower(), axis=1)]
 
     for idx, row in df_v.iterrows():
         status = row.get('Готовність', 'В черзі')
-        style = get_status_style(status)
+        style = get_card_style(status)
         
-        # Візуальна картка з кольором
+        # ЄДИНИЙ КОЛЬОРОВИЙ КОНТЕЙНЕР ДЛЯ ВСІЄЇ КАРТКИ
         st.markdown(f"""
-            <div style="{style} padding: 12px; border-radius: 8px; margin-bottom: 5px;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-size: 18px; font-weight: bold;">№{row['ID']} — {row['Клієнт']}</span>
-                    <span style="font-size: 14px; font-weight: 600; text-transform: uppercase;">● {status}</span>
+            <div style="{style} padding: 20px; border-radius: 12px; margin-bottom: 15px; color: #000000;">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(0,0,0,0.1); padding-bottom: 10px; margin-bottom: 10px;">
+                    <span style="font-size: 22px; font-weight: bold;">№{row['ID']} — {row['Клієнт']}</span>
+                    <span style="font-weight: 700; background: rgba(255,255,255,0.5); padding: 3px 12px; border-radius: 6px;">{status.upper()}</span>
+                </div>
+                <div style="font-size: 16px; margin-bottom: 10px;">
+                    📞 <b>{row['Телефон']}</b> | 📍 {row['Місто']} | 📅 {row['Дата']}
                 </div>
             </div>
         """, unsafe_allow_html=True)
 
-        with st.container(border=True):
-            ci, cs = st.columns([4, 1.2])
-            ci.write(f"📞 {row['Телефон']} | 📍 {row['Місто']} | 📅 {row['Дата']}")
-            
-            # Оновлений список статусів
-            opts = ["В черзі", "В роботі", "Готовий до відправлення", "Відправлений"]
-            new_st = cs.selectbox("Змінити статус", opts, index=opts.index(status) if status in opts else 0, key=f"st_{row['ID']}_{idx}")
-            if new_st != status:
-                df.loc[df['ID'] == row['ID'], 'Готовність'] = new_st
-                save_csv(ORDERS_CSV_ID, df); st.rerun()
+        # Контент всередині (товари, статус, фінанси)
+        with st.container():
+            # Робимо відступи, щоб візуально контент був "всередині" кольорового поля
+            inner_col, _ = st.columns([10, 0.1])
+            with inner_col:
+                c_st1, c_st2 = st.columns([3, 1])
+                
+                # Товари
+                try: items = json.loads(row['Товари_JSON'])
+                except: items = []
+                
+                total = 0.0
+                for it in items:
+                    q, p = float(it.get('к-ть', 0)), float(it.get('ціна', 0))
+                    total += (q * p)
+                    st.write(f"🔹 **{it.get('назва')}** — {q} шт.")
 
-            try: items = json.loads(row['Товари_JSON'])
-            except: items = []
-            
-            total = 0.0
-            for it in items:
-                q, p = float(it.get('к-ть', 0)), float(it.get('ціна', 0))
-                total += (q * p)
-                st.write(f"🔹 {it.get('назва')} ({it.get('арт')}) — {q} шт.")
+                # Статус (змінюємо прямо тут)
+                opts = ["В черзі", "В роботі", "Готовий до відправлення", "Відправлений"]
+                new_st = c_st2.selectbox("Змінити статус", opts, index=opts.index(status) if status in opts else 0, key=f"st_{row['ID']}_{idx}")
+                if new_st != status:
+                    df.loc[df['ID'] == row['ID'], 'Готовність'] = new_st
+                    save_csv(ORDERS_CSV_ID, df); st.rerun()
 
-            drawings = get_drawings(row['ID'])
-            if drawings:
-                with st.expander(f"📎 Креслення ({len(drawings)})"):
-                    for d in drawings: st.markdown(f"🔗 [{d['name']}]({d['webViewLink']})")
+                # Креслення
+                drawings = get_drawings(row['ID'])
+                if drawings:
+                    with st.expander(f"📎 Креслення ({len(drawings)})"):
+                        for d in drawings: st.markdown(f"🔗 [{d['name']}]({d['webViewLink']})")
 
-            if role != "Токар":
-                try: avans = float(str(row['Аванс']).replace(',', '.')) if row['Аванс'] else 0.0
-                except: avans = 0.0
-                c1, c2, c3 = st.columns(3)
-                c1.metric("До сплати", f"{round(total, 2)} грн")
-                c2.metric("Аванс", f"{avans} грн")
-                c3.metric("Залишок", f"{round(total - avans, 2)} грн")
+                # Фінанси
+                if role != "Токар":
+                    try: avans = float(str(row['Аванс']).replace(',', '.')) if row['Аванс'] else 0.0
+                    except: avans = 0.0
+                    f1, f2, f3 = st.columns(3)
+                    f1.metric("До сплати", f"{round(total, 2)} грн")
+                    f2.metric("Аванс", f"{avans} грн")
+                    f3.metric("Залишок", f"{round(total - avans, 2)} грн")
 
-            if can_edit:
-                with st.expander("✏️ Редагувати"):
-                    with st.form(f"form_{row['ID']}"):
-                        e_cl = st.text_input("Клієнт", value=row['Клієнт'])
-                        e_ph = st.text_input("Телефон", value=row['Телефон'])
-                        e_ct = st.text_input("Місто", value=row['Місто'])
-                        e_it = st.data_editor(pd.DataFrame(items), num_rows="dynamic")
-                        e_av = st.number_input("Аванс", value=float(avans))
-                        e_cm = st.text_area("Коментар", value=row['Коментар'])
-                        if st.form_submit_button("💾 Зберегти зміни"):
-                            new_items = e_it.to_dict('records')
-                            mask = df['ID'] == row['ID']
-                            df.loc[mask, 'Клієнт'], df.loc[mask, 'Телефон'] = e_cl, e_ph
-                            df.loc[mask, 'Місто'], df.loc[mask, 'Аванс'] = e_ct, str(e_av)
-                            df.loc[mask, 'Коментар'], df.loc[mask, 'Товари_JSON'] = e_cm, json.dumps(new_items, ensure_ascii=False)
-                            save_csv(ORDERS_CSV_ID, df); st.rerun()
+                if can_edit:
+                    with st.expander("✏️ Редагувати"):
+                        with st.form(f"f_{row['ID']}"):
+                            e_cl = st.text_input("Клієнт", value=row['Клієнт'])
+                            e_ph = st.text_input("Телефон", value=row['Телефон'])
+                            e_ct = st.text_input("Місто", value=row['Місто'])
+                            e_it = st.data_editor(pd.DataFrame(items), num_rows="dynamic")
+                            e_av = st.number_input("Аванс", value=float(avans))
+                            e_cm = st.text_area("Коментар", value=row['Коментар'])
+                            if st.form_submit_button("💾 Зберегти"):
+                                mask = df['ID'] == row['ID']
+                                df.loc[mask, 'Клієнт'], df.loc[mask, 'Телефон'] = e_cl, e_ph
+                                df.loc[mask, 'Місто'], df.loc[mask, 'Аванс'] = e_ct, str(e_av)
+                                df.loc[mask, 'Коментар'], df.loc[mask, 'Товари_JSON'] = e_cm, json.dumps(e_it.to_dict('records'), ensure_ascii=False)
+                                save_csv(ORDERS_CSV_ID, df); st.rerun()
+        st.write("---") # Розділювач між картками
 
 with tabs[1]:
     if role == "Супер Адмін":
         ed_u = st.data_editor(load_csv(USERS_CSV_ID, ['email', 'password', 'role', 'name']), num_rows="dynamic")
         if st.button("💾 Зберегти користувачів"): save_csv(USERS_CSV_ID, ed_u)
-        st.divider()
-        if st.checkbox("Активувати повне очищення бази"):
-            if st.button("🔥 ОЧИСТИТИ ВСЕ", type="primary"):
-                save_csv(ORDERS_CSV_ID, pd.DataFrame(columns=COLS)); st.rerun()
-
-st.sidebar.button("🚪 Вихід", on_click=lambda: st.session_state.clear())
