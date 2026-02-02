@@ -12,18 +12,16 @@ FOLDER_DRAWINGS_ID = "1SQyZ6OUk9xNBMvh98Ob4zw9LVaqWRtas"
 
 st.set_page_config(page_title="GETMANN Pro", layout="wide", page_icon="🏭")
 
-# --- СТИЛІЗАЦІЯ ПІД ВЕРСІЮ 3.0 ---
+# --- СТИЛІЗАЦІЯ ---
 st.markdown("""
     <style>
     .order-header {
-        padding: 15px; border-radius: 8px; color: white; font-weight: bold;
+        padding: 12px; border-radius: 8px; color: white; font-weight: bold;
         margin-bottom: 5px; display: flex; justify-content: space-between;
-        font-size: 1.1em;
     }
-    .header-work { background-color: #007bff; box-shadow: 0 4px 6px rgba(0,123,255,0.2); }
-    .header-done { background-color: #28a745; box-shadow: 0 4px 6px rgba(40,167,69,0.2); }
+    .header-work { background-color: #007bff; }
+    .header-done { background-color: #28a745; }
     .header-queue { background-color: #444; }
-    
     div[data-testid="stExpander"] { border: 1px solid #444; border-radius: 8px; background: #1e1e1e; }
     </style>
 """, unsafe_allow_html=True)
@@ -50,8 +48,15 @@ def load_data():
         fh.seek(0)
         df = pd.read_csv(fh).fillna("")
         df.columns = df.columns.str.strip()
+        
+        # Перевірка наявності необхідних колонок
+        required = ['ID', 'Дата', 'Клієнт', 'Телефон', 'Місто', 'Товари_JSON', 'Аванс', 'Готовність', 'Коментар']
+        for col in required:
+            if col not in df.columns: df[col] = ""
+            
         return df
-    except:
+    except Exception as e:
+        st.error(f"Помилка завантаження: {e}")
         return pd.DataFrame(columns=['ID', 'Дата', 'Клієнт', 'Телефон', 'Місто', 'Товари_JSON', 'Аванс', 'Готовність', 'Коментар'])
 
 def save_data(df):
@@ -81,30 +86,24 @@ st.title("🏭 GETMANN Pro System")
 if 'df' not in st.session_state:
     st.session_state.df = load_data()
 
-tab_journal, tab_new = st.tabs(["📋 Журнал замовлень", "➕ Створити замовлення"])
+tab_j, tab_n = st.tabs(["📋 Журнал", "➕ Нове замовлення"])
 
-with tab_journal:
+with tab_j:
     df = st.session_state.df
-    search = st.text_input("🔍 Швидкий пошук (ID, Клієнт, Товар)...")
+    search = st.text_input("🔍 Пошук...")
     display_df = df[df.apply(lambda r: search.lower() in str(r.values).lower(), axis=1)] if search else df
 
     for idx, row in display_df.iterrows():
-        status = row.get('Готовність', 'В черзі')
+        status = str(row.get('Готовність', 'В черзі'))
         h_color = "header-work" if status == "В роботі" else "header-done" if status == "Готово" else "header-queue"
         
-        # МАЛЮЄМО КОЛЬОРОВУ ШАПКУ
-        st.markdown(f'''
-            <div class="order-header {h_color}">
-                <span>⌛ №{row["ID"]} | {row["Дата"]} | 👤 {row["Клієнт"]}</span>
-                <span>{status}</span>
-            </div>
-        ''', unsafe_allow_html=True)
+        st.markdown(f'<div class="order-header {h_color}"><span>⌛ №{row["ID"]} | {row["Клієнт"]}</span><span>{status}</span></div>', unsafe_allow_html=True)
         
-        with st.expander("Розгорнути замовлення"):
-            # Статус чекбоксами
+        with st.expander("Деталі"):
+            # Статуси
             c1, c2, _ = st.columns([1, 1, 2])
-            is_w = c1.checkbox("🏗️ У виробництво", value=(status == "В роботі"), key=f"sw_{idx}")
-            is_d = c2.checkbox("✅ Виконано", value=(status == "Готово"), key=f"sd_{idx}")
+            is_w = c1.checkbox("🏗️ Робота", value=(status == "В роботі"), key=f"sw_{idx}")
+            is_d = c2.checkbox("✅ Готово", value=(status == "Готово"), key=f"sd_{idx}")
             
             new_st = "Готово" if is_d else "В роботі" if is_w else "В черзі"
             if new_st != status:
@@ -113,85 +112,65 @@ with tab_journal:
 
             st.divider()
 
-            # ТОВАРИ
-            st.markdown("#### 📦 Товари та ціни")
+            # ТОВАРИ ТА МАТЕМАТИКА
             try:
                 raw_json = row.get('Товари_JSON', '[]')
-                items = json.loads(raw_json) if raw_json and raw_json != "[]" else []
-            except:
-                items = []
+                items = json.loads(raw_json) if raw_json and "[" in raw_json else []
+            except: items = []
 
-            if not items: # Якщо JSON порожній, додаємо один пустий рядок
-                items = [{"назва": "", "арт": "", "к-ть": 1, "ціна": 0.0}]
+            if not items:
+                items = [{"назва": "Товар", "арт": "", "к-ть": 1, "ціна": 0.0}]
 
-            new_items_state = []
-            current_total = 0.0
+            new_items = []
+            total = 0.0
 
-            # Заголовки таблиці
-            t1, t2, t3, t4, t5, t6 = st.columns([3, 2, 1, 1.5, 1.5, 0.5])
-            t1.caption("Найменування"); t2.caption("Артикул"); t3.caption("К-ть"); t4.caption("Ціна"); t5.caption("Сума")
+            h1, h2, h3, h4, h5, h6 = st.columns([3, 2, 1, 1.5, 1.5, 0.5])
+            h1.caption("Назва"); h2.caption("Арт"); h3.caption("К-ть"); h4.caption("Ціна"); h5.caption("Сума")
 
             for i, item in enumerate(items):
                 col_n, col_a, col_q, col_p, col_s, col_pdf = st.columns([3, 2, 1, 1.5, 1.5, 0.5])
                 
-                name = col_n.text_input("N", value=item.get('назва', ''), key=f"n_{idx}_{i}", label_visibility="collapsed")
-                art = col_a.text_input("A", value=item.get('арт', ''), key=f"a_{idx}_{i}", label_visibility="collapsed")
-                qty = col_q.number_input("Q", value=int(item.get('к-ть', 1)), step=1, key=f"q_{idx}_{i}", label_visibility="collapsed")
-                price = col_p.number_input("P", value=float(item.get('ціна', 0.0)), key=f"p_{idx}_{i}", label_visibility="collapsed")
+                n = col_n.text_input("N", value=item.get('назва', ''), key=f"n_{idx}_{i}", label_visibility="collapsed")
+                a = col_a.text_input("A", value=item.get('арт', ''), key=f"a_{idx}_{i}", label_visibility="collapsed")
+                q = col_q.number_input("Q", value=int(item.get('к-ть', 1)), step=1, key=f"q_{idx}_{i}", label_visibility="collapsed")
+                p = col_p.number_input("P", value=float(item.get('ціна', 0.0)), key=f"p_{idx}_{i}", label_visibility="collapsed")
                 
-                # МАТЕМАТИКА
-                row_sum = qty * price
-                current_total += row_sum
-                col_s.write(f"**{row_sum}**")
+                s = q * p
+                total += s
+                col_s.write(f"**{s}**")
                 
-                if art:
-                    link = find_pdf_link(art)
+                if a:
+                    link = find_pdf_link(a)
                     if link: col_pdf.link_button("📄", link)
                 
-                new_items_state.append({"назва": name, "арт": art, "к-ть": qty, "ціна": price})
+                new_items.append({"назва": n, "арт": a, "к-ть": q, "ціна": p})
 
             if st.button("➕ Додати товар", key=f"add_{idx}"):
-                new_items_state.append({"назва": "", "арт": "", "к-ть": 1, "ціна": 0.0})
-                df.at[idx, 'Товари_JSON'] = json.dumps(new_items_state)
+                new_items.append({"назва": "", "арт": "", "к-ть": 1, "ціна": 0.0})
+                df.at[idx, 'Товари_JSON'] = json.dumps(new_items)
                 save_data(df); st.rerun()
 
             st.divider()
 
-            # ФІНАНСОВИЙ ПІДСУМОК
+            # ФІНАНСИ
             f1, f2, f3 = st.columns(3)
-            f1.metric("Загальна сума", f"{current_total} грн")
+            f1.metric("Сума", f"{total} грн")
             avans = f2.number_input("Аванс", value=float(row.get('Аванс', 0.0)), key=f"av_{idx}")
-            debt = current_total - avans
-            f3.metric("Залишок до оплати", f"{debt} грн", delta=-avans, delta_color="inverse")
+            f3.metric("Залишок", f"{total - avans} грн")
 
-            # КОНТАКТИ ТА КОМЕНТАР
-            c_ph, c_ct = st.columns(2)
-            u_phone = c_ph.text_input("📞 Телефон", value=str(row.get('Телефон', '')), key=f"ph_{idx}")
-            u_city = c_ct.text_input("📍 Місто / Відділення", value=str(row.get('Місто', '')), key=f"ct_{idx}")
-            u_comm = st.text_area("📝 Коментар до замовлення", value=str(row.get('Коментар', '')), key=f"co_{idx}")
-
-            if st.button("💾 ЗБЕРЕГТИ ЗМІНИ", key=f"btn_{idx}", use_container_width=True, type="primary"):
-                df.at[idx, 'Товари_JSON'] = json.dumps(new_items_state)
+            # ЗБЕРЕЖЕННЯ
+            if st.button("💾 ЗБЕРЕГТИ ВСЕ", key=f"btn_{idx}", use_container_width=True, type="primary"):
+                df.at[idx, 'Товари_JSON'] = json.dumps(new_items)
                 df.at[idx, 'Аванс'] = avans
-                df.at[idx, 'Телефон'] = u_phone
-                df.at[idx, 'Місто'] = u_city
-                df.at[idx, 'Коментар'] = u_comm
+                df.at[idx, 'Телефон'] = st.session_state.get(f"ph_{idx}", row.get('Телефон'))
+                df.at[idx, 'Місто'] = st.session_state.get(f"ct_{idx}", row.get('Місто'))
                 save_data(df); st.rerun()
 
-with tab_new:
-    st.subheader("📝 Реєстрація нового замовлення")
-    with st.form("new_form"):
-        n_id = st.text_input("ID замовлення (№)")
-        n_cl = st.text_input("ПІБ Клієнта")
-        n_ph = st.text_input("Номер телефону")
-        n_av = st.number_input("Початковий аванс", min_value=0.0)
-        if st.form_submit_button("Створити запис"):
-            new_entry = {
-                'ID': n_id, 'Дата': datetime.now().strftime("%d.%m.%Y"),
-                'Клієнт': n_cl, 'Телефон': n_ph, 'Аванс': n_av,
-                'Готовність': 'В черзі', 'Товари_JSON': json.dumps([{"назва": "", "арт": "", "к-ть": 1, "ціна": 0.0}])
-            }
-            st.session_state.df = pd.concat([st.session_state.df, pd.DataFrame([new_entry])], ignore_index=True)
+with tab_n:
+    with st.form("new"):
+        n_id = st.text_input("№")
+        n_cl = st.text_input("Клієнт")
+        if st.form_submit_button("Створити"):
+            new_r = {'ID': n_id, 'Дата': datetime.now().strftime("%d.%m.%Y"), 'Клієнт': n_cl, 'Готовність': 'В черзі', 'Товари_JSON': '[]', 'Аванс': 0.0}
+            st.session_state.df = pd.concat([st.session_state.df, pd.DataFrame([new_r])], ignore_index=True)
             save_data(st.session_state.df); st.rerun()
-
-st.sidebar.button("🔄 Оновити дані", on_click=lambda: st.session_state.pop('df'))
