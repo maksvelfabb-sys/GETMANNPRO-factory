@@ -8,12 +8,12 @@ from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
 # --- КОНФІГУРАЦІЯ ---
 ORDERS_CSV_ID = "1Ws7rL1uyWcYbLeXsmqmaijt98Gxo6k3i"
-USERS_CSV_ID = "1_ВАШ_ID_ФАЙЛА_КОРИСТУВАЧІВ" 
+USERS_CSV_ID = "1FDWndpOgRX21lwHk19SUoBfKyMj0K1Zc" 
 FOLDER_DRAWINGS_ID = "1SQyZ6OUk9xNBMvh98Ob4zw9LVaqWRtas"
 
-st.set_page_config(page_title="GETMANN Factory ERP", layout="wide", page_icon="🏭")
+st.set_page_config(page_title="GETMANN ERP", layout="wide", page_icon="🏭")
 
-# --- СЕРВІСНІ ФУНКЦІЇ ДЛЯ РОБОТИ З DRIVE ---
+# --- СЕРВІСНІ ФУНКЦІЇ ---
 @st.cache_resource
 def get_drive_service():
     if "gcp_service_account" in st.secrets:
@@ -33,8 +33,9 @@ def load_csv(file_id, cols):
         while not done: _, done = downloader.next_chunk()
         fh.seek(0)
         df = pd.read_csv(fh).fillna("")
+        df.columns = df.columns.str.strip()
         return df
-    except Exception as e:
+    except:
         return pd.DataFrame(columns=cols)
 
 def save_csv(file_id, df):
@@ -42,16 +43,12 @@ def save_csv(file_id, df):
     if not service: return
     try:
         csv_data = df.to_csv(index=False).encode('utf-8')
-        # ВИПРАВЛЕННЯ: resumable=False для маленьких CSV файлів
+        # Використовуємо False для resumable, щоб уникнути ResumableUploadError на малих файлах
         media_body = MediaIoBaseUpload(io.BytesIO(csv_data), mimetype='text/csv', resumable=False)
         service.files().update(fileId=file_id, media_body=media_body).execute()
-        st.toast("Дані успішно синхронізовано ☁️")
+        st.toast("Синхронізовано з хмарою ✅")
     except Exception as e:
-        st.error(f"Помилка синхронізації з Google Drive: {e}")
-
-def safe_float(v):
-    try: return float(str(v).replace(',', '.').strip()) if v else 0.0
-    except: return 0.0
+        st.error(f"Помилка Google Drive: {e}")
 
 # --- АВТОРИЗАЦІЯ ---
 if 'users_df' not in st.session_state:
@@ -59,58 +56,102 @@ if 'users_df' not in st.session_state:
 
 u_df = st.session_state.users_df
 
-# Активація Super Admin (Максим)
+# Перевірка та активація Супер Адміна (Максима)
 if u_df[u_df['email'] == 'maksvel.fabb@gmail.com'].empty:
-    if st.button("Активувати профіль Super Admin (maksvel.fabb@gmail.com)"):
-        new_boss = pd.DataFrame([{'email': 'maksvel.fabb@gmail.com', 'password': '1234', 'role': 'Супер Адмін', 'name': 'Максим'}])
+    st.warning("Профіль Максима не знайдено у вказаному файлі.")
+    if st.button("🚀 Створити профіль Супер Адміна"):
+        new_boss = pd.DataFrame([{
+            'email': 'maksvel.fabb@gmail.com', 
+            'password': '1234', 
+            'role': 'Супер Адмін', 
+            'name': 'Максим'
+        }])
         st.session_state.users_df = pd.concat([u_df, new_boss], ignore_index=True)
         save_csv(USERS_CSV_ID, st.session_state.users_df)
+        st.success("Профіль активовано! Тепер увійдіть з паролем 1234")
         st.rerun()
 
 if 'auth' not in st.session_state:
     st.title("🏭 GETMANN ERP Login")
     with st.form("login"):
-        e = st.text_input("Email")
-        p = st.text_input("Пароль", type="password")
+        email_in = st.text_input("Email")
+        pass_in = st.text_input("Пароль", type="password")
         if st.form_submit_button("Увійти"):
-            user = st.session_state.users_df[(st.session_state.users_df['email'] == e) & (st.session_state.users_df['password'] == str(p))]
+            user = st.session_state.users_df[
+                (st.session_state.users_df['email'] == email_in) & 
+                (st.session_state.users_df['password'] == str(pass_in))
+            ]
             if not user.empty:
                 st.session_state.auth = user.iloc[0].to_dict()
                 st.rerun()
-            else: st.error("❌ Помилка")
+            else:
+                st.error("❌ Невірний email або пароль")
     st.stop()
 
+# Дані поточного сеансу
 me = st.session_state.auth
 role = me['role']
+can_edit = role in ["Супер Адмін", "Адмін", "Менеджер"]
 
-# --- РОЗПОДІЛ ВКЛАДОК ---
-tabs_list = ["📋 Журнал"]
-if role in ["Супер Адмін", "Адмін", "Менеджер"]: tabs_list.append("➕ Нове замовлення")
-if role in ["Супер Адмін", "Адмін"]: 
-    tabs_list.append("👥 Персонал")
-    tabs_list.append("⚙️ База")
-
-tabs = st.tabs(tabs_list)
-
-# --- ЛОГІКА ТАБІВ (Скорочено для стабільності) ---
+# --- ЗАВАНТАЖЕННЯ ДАНИХ ЗАМОВЛЕНЬ ---
 if 'df' not in st.session_state:
     st.session_state.df = load_csv(ORDERS_CSV_ID, ['ID', 'Дата', 'Клієнт', 'Телефон', 'Місто', 'Товари_JSON', 'Аванс', 'Готовність', 'Коментар'])
 
-with tabs[0]:
-    st.subheader("📋 Список замовлень")
-    # Тут стандартний код відображення Журналу
-    st.dataframe(st.session_state.df, use_container_width=True)
+# --- НАВІГАЦІЯ ---
+st.sidebar.title(f"👤 {me['name']}")
+st.sidebar.write(f"🛡️ Роль: **{role}**")
+if st.sidebar.button("🚪 Вийти"):
+    del st.session_state.auth
+    st.rerun()
 
-if "👥 Персонал" in tabs_list:
-    with tabs[tabs_list.index("👥 Персонал")]:
-        st.header("👥 Керування користувачами")
-        edited_u = st.data_editor(st.session_state.users_df, num_rows="dynamic")
-        if st.button("💾 Зберегти зміни"):
+tabs_list = ["📋 Журнал"]
+if can_edit: tabs_list.append("➕ Нове замовлення")
+if role in ["Супер Адмін", "Адмін"]: tabs_list.append("⚙️ Адмін")
+
+tabs = st.tabs(tabs_list)
+
+# --- ВКЛАДКА: ЖУРНАЛ ---
+with tabs[0]:
+    search = st.text_input("🔍 Пошук по базі...")
+    df_view = st.session_state.df
+    if search:
+        df_view = df_view[df_view.apply(lambda r: search.lower() in str(r.values).lower(), axis=1)]
+    st.dataframe(df_view, use_container_width=True)
+
+# --- ВКЛАДКА: НОВЕ ЗАМОВЛЕННЯ ---
+if can_edit and "➕ Нове замовлення" in tabs_list:
+    with tabs[tabs_list.index("➕ Нове замовлення")]:
+        st.header("📝 Створення замовлення")
+        with st.form("new_order", clear_on_submit=True):
+            c1, c2 = st.columns(2)
+            n_id = c1.text_input("ID замовлення")
+            n_name = c2.text_input("Клієнт")
+            n_phone = c1.text_input("Телефон")
+            n_city = c2.text_input("Місто")
+            n_avans = st.number_input("Аванс", min_value=0.0)
+            
+            if st.form_submit_button("✅ Створити замовлення"):
+                if n_id and n_name:
+                    new_row = {
+                        'ID': n_id, 'Дата': datetime.now().strftime("%d.%m.%Y"),
+                        'Клієнт': n_name, 'Телефон': n_phone, 'Місто': n_city,
+                        'Аванс': n_avans, 'Готовність': 'В черзі',
+                        'Товари_JSON': json.dumps([{"назва": "Товар", "арт": "", "к-ть": 1, "ціна": 0.0}]),
+                        'Коментар': ""
+                    }
+                    st.session_state.df = pd.concat([st.session_state.df, pd.DataFrame([new_row])], ignore_index=True)
+                    save_csv(ORDERS_CSV_ID, st.session_state.df)
+                    st.success("Замовлення успішно додано!")
+                    st.rerun()
+                else:
+                    st.error("Заповніть ID та ПІБ клієнта!")
+
+# --- ВКЛАДКА: АДМІН ---
+if role in ["Супер Адмін", "Адмін"]:
+    with tabs[tabs_list.index("⚙️ Адмін")]:
+        st.subheader("👥 Керування користувачами")
+        edited_u = st.data_editor(st.session_state.users_df, num_rows="dynamic", key="user_editor")
+        if st.button("💾 Зберегти зміни користувачів"):
             st.session_state.users_df = edited_u
             save_csv(USERS_CSV_ID, edited_u)
             st.rerun()
-
-# --- КНОПКА ВИХОДУ ---
-if st.sidebar.button("Вийти"):
-    del st.session_state.auth
-    st.rerun()
