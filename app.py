@@ -13,7 +13,7 @@ COLS = ['ID', 'Дата', 'Клієнт', 'Телефон', 'Місто', 'ТТ�
 
 st.set_page_config(page_title="GETMANN ERP", layout="wide", page_icon="🏭")
 
-# --- ДОПОМІЖНІ ФУНКЦІЇ (Drive) ---
+# --- ДОПОМІЖНІ ФУНКЦІЇ ---
 def safe_float(v):
     try: return float(str(v).replace(',', '.'))
     except: return 0.0
@@ -56,8 +56,8 @@ def save_csv(file_id, df):
         csv_data = df.to_csv(index=False).encode('utf-8')
         media_body = MediaIoBaseUpload(io.BytesIO(csv_data), mimetype='text/csv', resumable=False)
         service.files().update(fileId=file_id, media_body=media_body).execute()
-        st.toast("Збережено на Drive ✅")
-    except: st.error("Помилка синхронізації")
+        st.toast("Дані синхронізовано ✅")
+    except: st.error("Помилка Drive")
 
 def get_card_style(status):
     styles = {
@@ -85,21 +85,18 @@ if 'auth' not in st.session_state:
             else: st.error("❌ Доступ обмежено")
     st.stop()
 
-# --- SIDEBAR МЕНЮ ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.title("🏢 МЕНЮ")
-    menu = st.radio("Навігація:", 
-        ["📋 Замовлення", "⚙️ Налаштування", "📐 Каталог креслень", "🏗️ Матеріали"],
-        index=0)
+    menu = st.radio("Навігація:", ["📋 Замовлення", "⚙️ Налаштування", "📐 Каталог креслень", "🏗️ Матеріали"])
     st.divider()
-    st.caption(f"Увійшов: {st.session_state.auth['email']}")
+    st.caption(f"Користувач: {st.session_state.auth['email']}")
     st.caption(f"Роль: {st.session_state.auth['role']}")
-    if st.button("🚪 Вихід"):
+    if st.button("🚪 Вийти"):
         del st.session_state.auth
         st.rerun()
 
-# --- ЛОГІКА СТОРІНОК ---
-
+# --- СТОРІНКА: ЗАМОВЛЕННЯ ---
 if menu == "📋 Замовлення":
     st.header("Журнал замовлень")
     df = load_csv(ORDERS_CSV_ID, COLS)
@@ -112,8 +109,7 @@ if menu == "📋 Замовлення":
             next_id = int(numeric_ids.max() + 1) if not numeric_ids.empty else 1001
             with st.form("new_order", clear_on_submit=True):
                 c1, c2, c3 = st.columns([1, 2, 2])
-                f_id = c1.text_input("№*", value=str(next_id))
-                f_cl, f_ph = c2.text_input("Клієнт*"), c3.text_input("Телефон")
+                f_id, f_cl, f_ph = c1.text_input("№*", value=str(next_id)), c2.text_input("Клієнт*"), c3.text_input("Телефон")
                 c4, c5, c6 = st.columns([2, 2, 1])
                 f_ct, f_ttn, f_av = c4.text_input("Місто"), c5.text_input("ТТН"), c6.number_input("Аванс", 0.0)
                 f_cm = st.text_area("Коментар")
@@ -143,12 +139,12 @@ if menu == "📋 Замовлення":
         with st.container(border=True):
             c_info, c_status = st.columns([4, 1.2])
             with c_info:
-                total_sum = 0
+                t_sum = 0
                 for it in items:
                     st.markdown(f"🔹 **{it.get('назва')}** ({it.get('арт')}) — {it.get('к-ть')} шт × {it.get('ціна')} = **{it.get('сума')}**")
-                    total_sum += safe_float(it.get('сума'))
+                    t_sum += safe_float(it.get('сума'))
                 if row['Коментар']: st.caption(f"💬 {row['Коментар']}")
-                st.write(f"**Разом: {total_sum} грн** | Аванс: {row['Аванс']}")
+                st.write(f"**Разом: {t_sum} грн** | Аванс: {row['Аванс']}")
             
             with c_status:
                 opts = ["В черзі", "В роботі", "Готовий до відправлення", "Відправлений"]
@@ -162,21 +158,16 @@ if menu == "📋 Замовлення":
                     with st.form(f"f_edit_{idx}"):
                         st.write("👤 **Клієнт**")
                         r1c1, r1c2, r1c3, r1c4 = st.columns(4)
-                        e_cl, e_ph = r1c1.text_input("Клієнт", row['Клієнт']), r1c2.text_input("Телефон", row['Телефон'])
-                        e_ct, e_tt = r1c3.text_input("Місто", row['Місто']), r1c4.text_input("ТТН", row['ТТН'])
+                        e_cl, e_ph, e_ct, e_tt = r1c1.text_input("Клієнт", row['Клієнт']), r1c2.text_input("Телефон", row['Телефон']), r1c3.text_input("Місто", row['Місто']), r1c4.text_input("ТТН", row['ТТН'])
                         
                         st.write("📦 **Товари**")
                         curr_items = []
                         for i, it in enumerate(items):
                             col1, col2, col3, col4, col5 = st.columns([2.5, 1, 1, 1, 1])
-                            u_n = col1.text_input("Назва", it.get('назва'), key=f"n_{idx}_{i}")
-                            u_a = col2.text_input("Арт", it.get('арт'), key=f"a_{idx}_{i}")
-                            u_q = col3.number_input("К-ть", value=safe_int(it.get('к-ть')), step=1, key=f"q_{idx}_{i}")
-                            u_p = col4.number_input("Ціна", value=safe_float(it.get('ціна')), key=f"p_{idx}_{i}")
-                            u_s = col5.number_input("Сума", value=safe_float(it.get('сума')), key=f"s_{idx}_{i}")
+                            u_n, u_a = col1.text_input("Назва", it.get('назва'), key=f"n_{idx}_{i}"), col2.text_input("Арт", it.get('арт'), key=f"a_{idx}_{i}")
+                            u_q, u_p, u_s = col3.number_input("К-ть", value=safe_int(it.get('к-ть')), step=1, key=f"q_{idx}_{i}"), col4.number_input("Ціна", value=safe_float(it.get('ціна')), key=f"p_{idx}_{i}"), col5.number_input("Сума", value=safe_float(it.get('сума')), key=f"s_{idx}_{i}")
                             
-                            old_s = safe_float(it.get('сума'))
-                            if round(u_s, 2) != round(old_s, 2):
+                            if round(u_s, 2) != round(safe_float(it.get('сума')), 2):
                                 f_p, f_s = round(u_s / u_q, 2) if u_q > 0 else 0.0, u_s
                             else:
                                 f_p, f_s = u_p, round(u_q * u_p, 2)
@@ -189,34 +180,49 @@ if menu == "📋 Замовлення":
                             df.loc[df['ID'] == row['ID'], 'Товари_JSON'] = json.dumps(curr_items, ensure_ascii=False)
                             save_csv(ORDERS_CSV_ID, df); st.rerun()
 
-                        e_cm = st.text_area("Коментар", row['Коментар'])
-                        e_av = st.number_input("Аванс", value=safe_float(row['Аванс']))
-                        
+                        e_cm, e_av = st.text_area("Коментар", row['Коментар']), st.number_input("Аванс", value=safe_float(row['Аванс']))
                         if st.form_submit_button("💾 Зберегти зміни"):
                             mask = df['ID'] == row['ID']
                             df.loc[mask, ['Клієнт', 'Телефон', 'Місто', 'ТТН', 'Коментар', 'Аванс']] = [e_cl, e_ph, e_ct, e_tt, e_cm, str(e_av)]
                             df.loc[mask, 'Товари_JSON'] = json.dumps(curr_items, ensure_ascii=False)
                             save_csv(ORDERS_CSV_ID, df); st.rerun()
 
+# --- СТОРІНКА: НАЛАШТУВАННЯ ---
 elif menu == "⚙️ Налаштування":
     st.header("Налаштування профілю")
     u_df = load_csv(USERS_CSV_ID, ['email', 'password', 'role'])
-    my_email = st.session_state.auth['email']
+    my_email, my_role = st.session_state.auth['email'], st.session_state.auth['role']
     
     with st.container(border=True):
         st.write(f"**Ваш логін:** {my_email}")
-        st.write(f"**Ваша роль:** {st.session_state.auth['role']}")
-        
+        st.write(f"**Ваша роль:** {my_role}")
         new_pass = st.text_input("Новий пароль", type="password")
         if st.button("Оновити пароль"):
             if new_pass:
                 u_df.loc[u_df['email'] == my_email, 'password'] = new_pass
-                save_csv(USERS_CSV_ID, u_df)
-                st.success("Пароль успішно змінено!")
+                save_csv(USERS_CSV_ID, u_df); st.success("Пароль змінено!")
             else: st.warning("Введіть пароль")
 
-elif menu == "📐 Каталог креслень":
-    st.info("🚧 Цей розділ знаходиться у розробці")
+    if my_role == "Супер Адмін":
+        st.divider()
+        st.subheader("🔴 Зона ризику")
+        with st.expander("Керування базою замовлень"):
+            st.warning("Увага! Ця дія видалить УСІ замовлення з бази назавжди.")
+            if st.button("❌ ОЧИСТИТИ БАЗУ ЗАМОВЛЕНЬ"):
+                st.session_state.confirm_delete = True
+            
+            if st.session_state.get('confirm_delete'):
+                st.error("Ви впевнені? Це неможливо буде скасувати.")
+                c1, c2 = st.columns(2)
+                if c1.button("ТАК, ВИДАЛИТИ ВСЕ"):
+                    empty_df = pd.DataFrame(columns=COLS)
+                    save_csv(ORDERS_CSV_ID, empty_df)
+                    st.session_state.confirm_delete = False
+                    st.rerun()
+                if c2.button("СКАСУВАТИ"):
+                    st.session_state.confirm_delete = False
+                    st.rerun()
 
-elif menu == "🏗️ Матеріали":
-    st.info("🚧 Цей розділ знаходиться у розробці")
+# --- ІНШІ СТОРІНКИ ---
+elif menu == "📐 Каталог креслень": st.info("🚧 У розробці")
+elif menu == "🏗️ Матеріали": st.info("🚧 У розробці")
