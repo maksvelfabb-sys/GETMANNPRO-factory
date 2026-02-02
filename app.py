@@ -9,10 +9,21 @@ from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 # --- КОНФІГУРАЦІЯ ---
 ORDERS_CSV_ID = "1Ws7rL1uyWcYbLeXsmqmaijt98Gxo6k3i"
 USERS_CSV_ID = "1ibrEFKOyvt5xgC_vSMhvDmNxdO1pVYfr4a-TqgJM82Y"
-FOLDER_DRAWINGS_ID = "1SQyZ6OUk9xNBMvh98Ob4zw9LVaqWRtas" # ПОВЕРНУТО ✅
+FOLDER_DRAWINGS_ID = "1SQyZ6OUk9xNBMvh98Ob4zw9LVaqWRtas"
 COLS = ['ID', 'Дата', 'Клієнт', 'Телефон', 'Місто', 'Товари_JSON', 'Аванс', 'Готовність', 'Коментар']
 
 st.set_page_config(page_title="GETMANN ERP", layout="wide", page_icon="🏭")
+
+# --- ОНОВЛЕНА ЛОГІКА КОЛЬОРІВ ---
+def get_status_style(status):
+    if status == "В роботі":
+        return "border: 2px solid #FFD700; background-color: #FFFDE7;" # Жовтий (Процес)
+    elif status == "Готовий до відправлення":
+        return "border: 2px solid #00BFFF; background-color: #E1F5FE;" # М'який блакитний (Активність)
+    elif status == "Відправлений":
+        return "border: 2px solid #28A745; background-color: #E8F5E9;" # Насичений зелений (Завершено)
+    else:
+        return "border: 1px solid #DDD; background-color: #FFFFFF;" # Білий/Сірий (Черга)
 
 # --- СЕРВІСНІ ФУНКЦІЇ ---
 @st.cache_resource
@@ -37,7 +48,6 @@ def load_csv(file_id, cols):
         while not done: _, done = downloader.next_chunk()
         fh.seek(0)
         df = pd.read_csv(fh, dtype=str).fillna("")
-        df.columns = df.columns.str.strip()
         for c in cols:
             if c not in df.columns: df[c] = ""
         return df
@@ -50,11 +60,9 @@ def save_csv(file_id, df):
         csv_data = df.to_csv(index=False).encode('utf-8')
         media_body = MediaIoBaseUpload(io.BytesIO(csv_data), mimetype='text/csv', resumable=False)
         service.files().update(fileId=file_id, media_body=media_body).execute()
-        st.toast("Синхронізовано ✅")
-    except Exception as e:
-        st.error(f"Помилка Drive: {e}")
+        st.toast("Дані синхронізовано ✅")
+    except: st.error("Помилка запису в Drive")
 
-# --- ФУНКЦІЯ ДЛЯ ПОШУКУ КРЕСЛЕНЬ ---
 def get_drawings(order_id):
     service = get_drive_service()
     if not service: return []
@@ -69,7 +77,7 @@ if 'auth' not in st.session_state:
     st.title("🏭 GETMANN ERP")
     with st.form("login"):
         e = st.text_input("Логін").strip()
-        p = st.text_input("Пароль", type="password", help="Введіть ваш пароль").strip()
+        p = st.text_input("Пароль", type="password").strip()
         if st.form_submit_button("Увійти"):
             if e == "maksvel.fabb@gmail.com" and p == "1234":
                 st.session_state.auth = {'email': e, 'role': 'Супер Адмін', 'name': 'Максим'}
@@ -79,17 +87,17 @@ if 'auth' not in st.session_state:
             if not user.empty:
                 st.session_state.auth = user.iloc[0].to_dict()
                 st.rerun()
-            else: st.error("❌ Невірні дані")
+            else: st.error("❌ Доступ заборонено")
     st.stop()
 
 me = st.session_state.auth
 role = me['role']
 can_edit = role in ["Супер Адмін", "Адмін", "Менеджер"]
 
-# --- ОСНОВНІ ДАНІ ---
+# --- ДАНІ ---
 df = load_csv(ORDERS_CSV_ID, COLS)
 
-tabs = st.tabs(["📋 Журнал", "⚙️ Адмін"])
+tabs = st.tabs(["📋 Журнал замовлень", "⚙️ Адмін"])
 
 with tabs[0]:
     if can_edit:
@@ -98,17 +106,15 @@ with tabs[0]:
             next_id = int(numeric_ids.max() + 1) if not numeric_ids.empty else 1001
             with st.form("new_order", clear_on_submit=True):
                 c1, c2 = st.columns(2)
-                f_id = c1.text_input("№ Замовлення*", value=str(next_id))
+                f_id = c1.text_input("№*", value=str(next_id))
                 f_cl = c2.text_input("Клієнт*")
-                f_ph = c1.text_input("Телефон")
-                f_ct = c2.text_input("Місто")
+                f_ph, f_ct = c1.text_input("Телефон"), c2.text_input("Місто")
                 st.write("📦 **Товари:**")
                 tc1, tc2, tc3, tc4 = st.columns([3, 1, 1, 1])
                 t_n, t_a = tc1.text_input("Назва"), tc2.text_input("Арт")
                 t_q = tc3.number_input("К-ть", min_value=1, value=1)
-                t_p = tc4.number_input("Ціна", min_value=0.0)
-                f_cm = st.text_area("Коментар")
-                f_av = st.number_input("Аванс", min_value=0.0)
+                t_p = tc4.number_input("Ціна за од.", min_value=0.0)
+                f_cm, f_av = st.text_area("Коментар"), st.number_input("Аванс", min_value=0.0)
                 if st.form_submit_button("🚀 Створити"):
                     items = [{"назва": t_n, "арт": t_a, "к-ть": t_q, "ціна": t_p, "сума": round(t_q * t_p, 2)}]
                     new_row = {'ID': str(f_id), 'Дата': datetime.now().strftime("%d.%m.%Y"), 'Клієнт': f_cl, 'Телефон': str(f_ph), 'Місто': f_ct, 'Аванс': str(f_av), 'Готовність': 'В черзі', 'Товари_JSON': json.dumps(items, ensure_ascii=False), 'Коментар': f_cm}
@@ -122,21 +128,30 @@ with tabs[0]:
         df_v = df_v[df_v.apply(lambda r: search.lower() in str(r.values).lower(), axis=1)]
 
     for idx, row in df_v.iterrows():
+        status = row.get('Готовність', 'В черзі')
+        style = get_status_style(status)
+        
+        # Візуальна картка з кольором
+        st.markdown(f"""
+            <div style="{style} padding: 12px; border-radius: 8px; margin-bottom: 5px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 18px; font-weight: bold;">№{row['ID']} — {row['Клієнт']}</span>
+                    <span style="font-size: 14px; font-weight: 600; text-transform: uppercase;">● {status}</span>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
         with st.container(border=True):
-            ci, cs = st.columns([4, 1])
-            ci.markdown(f"### №{row['ID']} — {row['Клієнт']}")
-            ci.write(f"📞 {row['Телефон']} | 📍 {row['Місто']}")
+            ci, cs = st.columns([4, 1.2])
+            ci.write(f"📞 {row['Телефон']} | 📍 {row['Місто']} | 📅 {row['Дата']}")
             
-            # Статуси
-            opts = ["В черзі", "В роботі", "Готово"]
-            curr_st = row.get('Готовність', 'В черзі')
-            new_st = cs.selectbox("Статус", opts, index=opts.index(curr_st) if curr_st in opts else 0, key=f"st_{row['ID']}_{idx}")
-            
-            if new_st != curr_st:
+            # Оновлений список статусів
+            opts = ["В черзі", "В роботі", "Готовий до відправлення", "Відправлений"]
+            new_st = cs.selectbox("Змінити статус", opts, index=opts.index(status) if status in opts else 0, key=f"st_{row['ID']}_{idx}")
+            if new_st != status:
                 df.loc[df['ID'] == row['ID'], 'Готовність'] = new_st
                 save_csv(ORDERS_CSV_ID, df); st.rerun()
 
-            # Відображення товарів
             try: items = json.loads(row['Товари_JSON'])
             except: items = []
             
@@ -144,60 +159,45 @@ with tabs[0]:
             for it in items:
                 q, p = float(it.get('к-ть', 0)), float(it.get('ціна', 0))
                 total += (q * p)
-                st.write(f"🔹 {it.get('назва')} — {q} шт.")
+                st.write(f"🔹 {it.get('назва')} ({it.get('арт')}) — {q} шт.")
 
-            # ВІДОБРАЖЕННЯ КРЕСЛЕНЬ (Drawings logic)
             drawings = get_drawings(row['ID'])
             if drawings:
                 with st.expander(f"📎 Креслення ({len(drawings)})"):
-                    for d in drawings:
-                        st.markdown(f"🔗 [{d['name']}]({d['webViewLink']})")
+                    for d in drawings: st.markdown(f"🔗 [{d['name']}]({d['webViewLink']})")
 
-            # Фінанси
             if role != "Токар":
                 try: avans = float(str(row['Аванс']).replace(',', '.')) if row['Аванс'] else 0.0
                 except: avans = 0.0
                 c1, c2, c3 = st.columns(3)
-                c1.metric("Сума", f"{round(total, 2)} грн")
+                c1.metric("До сплати", f"{round(total, 2)} грн")
                 c2.metric("Аванс", f"{avans} грн")
                 c3.metric("Залишок", f"{round(total - avans, 2)} грн")
 
-            # Редагування
             if can_edit:
                 with st.expander("✏️ Редагувати"):
-                    with st.form(f"edit_{row['ID']}"):
+                    with st.form(f"form_{row['ID']}"):
                         e_cl = st.text_input("Клієнт", value=row['Клієнт'])
                         e_ph = st.text_input("Телефон", value=row['Телефон'])
                         e_ct = st.text_input("Місто", value=row['Місто'])
                         e_it = st.data_editor(pd.DataFrame(items), num_rows="dynamic")
-                        e_av = st.number_input("Аванс", value=float(avans) if 'avans' in locals() else 0.0)
+                        e_av = st.number_input("Аванс", value=float(avans))
                         e_cm = st.text_area("Коментар", value=row['Коментар'])
-                        
-                        if st.form_submit_button("💾 Зберегти"):
+                        if st.form_submit_button("💾 Зберегти зміни"):
                             new_items = e_it.to_dict('records')
-                            for item in new_items:
-                                try: item['сума'] = round(float(item['к-ть']) * float(item['ціна']), 2)
-                                except: item['сума'] = 0
-                            
                             mask = df['ID'] == row['ID']
-                            df.loc[mask, 'Клієнт'] = e_cl
-                            df.loc[mask, 'Телефон'] = e_ph
-                            df.loc[mask, 'Місто'] = e_ct
-                            df.loc[mask, 'Аванс'] = str(e_av)
-                            df.loc[mask, 'Коментар'] = e_cm
-                            df.loc[mask, 'Товари_JSON'] = json.dumps(new_items, ensure_ascii=False)
+                            df.loc[mask, 'Клієнт'], df.loc[mask, 'Телефон'] = e_cl, e_ph
+                            df.loc[mask, 'Місто'], df.loc[mask, 'Аванс'] = e_ct, str(e_av)
+                            df.loc[mask, 'Коментар'], df.loc[mask, 'Товари_JSON'] = e_cm, json.dumps(new_items, ensure_ascii=False)
                             save_csv(ORDERS_CSV_ID, df); st.rerun()
 
 with tabs[1]:
     if role == "Супер Адмін":
-        st.subheader("Налаштування користувачів")
         ed_u = st.data_editor(load_csv(USERS_CSV_ID, ['email', 'password', 'role', 'name']), num_rows="dynamic")
         if st.button("💾 Зберегти користувачів"): save_csv(USERS_CSV_ID, ed_u)
         st.divider()
-        st.subheader("Системні ID")
-        st.write(f"📁 Папка креслень: `{FOLDER_DRAWINGS_ID}`")
-        if st.checkbox("Активувати видалення"):
-            if st.button("ОЧИСТИТИ ВСІ ЗАМОВЛЕННЯ"):
+        if st.checkbox("Активувати повне очищення бази"):
+            if st.button("🔥 ОЧИСТИТИ ВСЕ", type="primary"):
                 save_csv(ORDERS_CSV_ID, pd.DataFrame(columns=COLS)); st.rerun()
 
 st.sidebar.button("🚪 Вихід", on_click=lambda: st.session_state.clear())
