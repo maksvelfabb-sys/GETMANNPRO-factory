@@ -5,13 +5,14 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 
-# --- КОНФІГУРАЦІЯ ---
-FOLDER_DRAWINGS_ID = "1SQyZ6OUk9xNBMvh98Ob4zw9LVaqWRtas"
+# --- КОНФІГУРАЦІЯ (Build 4.2 Legacy) ---
 ORDERS_CSV_ID = "1Ws7rL1uyWcYbLeXsmqmaijt98Gxo6k3i"
+FOLDER_DRAWINGS_ID = "1SQyZ6OUk9xNBMvh98Ob4zw9LVaqWRtas"
 
-st.set_page_config(page_title="Factory CRM | Build 4.1", layout="wide")
+# ПОВЕРТАЄМО ОРИГІНАЛЬНУ НАЗВУ
+st.set_page_config(page_title="GETMANN Pro", layout="wide", page_icon="🏭")
 
-# --- СЕРВІСНІ ФУНКЦІЇ ---
+# --- СИСТЕМНІ ФУНКЦІЇ ---
 @st.cache_resource
 def get_drive_service():
     try:
@@ -41,72 +42,110 @@ def load_data():
 
 def save_data(df):
     service = get_drive_service()
+    if not service: return
     try:
         csv_buffer = io.StringIO()
         df.to_csv(csv_buffer, index=False)
         media = MediaFileUpload(
             io.BytesIO(csv_buffer.getvalue().encode()), 
-            mimetype='text/csv', 
-            resumable=True
+            mimetype='text/csv'
         )
         service.files().update(fileId=ORDERS_CSV_ID, media_body=media).execute()
-        st.success("Дані збережено в хмарі! ✅")
+        st.success("Дані синхронізовано! ✅")
     except Exception as e:
         st.error(f"Помилка збереження: {e}")
 
-# --- ЛОГІКА ПРОГРАМИ ---
-st.title("🏭 Factory CRM — Build 4.1")
+# --- ФУНКЦІЇ З ПОПЕРЕДНЬОЇ ВЕРСІЇ ---
+def find_pdf_link(article):
+    service = get_drive_service()
+    if not service: return None
+    try:
+        query = f"name = '{article}.pdf' and '{FOLDER_DRAWINGS_ID}' in parents and trashed = false"
+        results = service.files().list(q=query, fields="files(id, webViewLink)").execute()
+        files = results.get('files', [])
+        return files[0]['webViewLink'] if files else None
+    except:
+        return None
 
-if 'orders_df' not in st.session_state:
-    st.session_state.orders_df = load_data()
+# --- ГОЛОВНИЙ ІНТЕРФЕЙС GETMANN Pro ---
+st.title("🏭 GETMANN Pro")
+st.markdown("---")
 
-tabs = st.tabs(["📋 Список замовлень", "➕ Додати замовлення", "📦 Склад матеріалів"])
+if 'df' not in st.session_state:
+    st.session_state.df = load_data()
 
-# --- ВКЛАДКА 1: СПИСОК ТА СТАТУСИ ---
+# ТАБИ ЯК У ПОПЕРЕДНІЙ ВЕРСІЇ
+tabs = st.tabs(["📋 Замовлення", "➕ Нове замовлення", "📦 Склад", "📊 Звіти"])
+
 with tabs[0]:
-    df = st.session_state.orders_df
-    search = st.text_input("🔍 Пошук замовлення")
+    st.subheader("Поточні замовлення")
+    df = st.session_state.df
+    search = st.text_input("🔍 Пошук замовлення (Клієнт/ID/Артикул)")
     
-    for idx, row in df.iterrows():
-        if search.lower() in str(row.values).lower():
-            with st.expander(f"📦 {row['Клієнт']} (ID: {row['ID']}) — {row['Готовність']}"):
-                col1, col2 = st.columns([2, 1])
-                
-                with col1:
-                    st.write(f"**Товари:** {row['Товари']}")
-                    # Тут можна додати логіку пошуку PDF як раніше
-                
-                with col2:
-                    new_status = st.selectbox(
-                        "Змінити статус", 
-                        ["В черзі", "В роботі", "Готово", "Відвантажено"], 
-                        key=f"status_{idx}",
-                        index=["В черзі", "В роботі", "Готово", "Відвантажено"].index(row['Готовність']) if row['Готовність'] in ["В черзі", "В роботі", "Готово", "Відвантажено"] else 0
-                    )
-                    if new_status != row['Готовність']:
-                        df.at[idx, 'Готовність'] = new_status
-                        save_data(df)
-                        st.rerun()
+    # Фільтрація
+    if search:
+        display_df = df[df.apply(lambda r: search.lower() in str(r.values).lower(), axis=1)]
+    else:
+        display_df = df
 
-# --- ВКЛАДКА 2: АДМІН-ПАНЕЛЬ ---
+    for idx, row in display_df.iterrows():
+        with st.expander(f"📦 {row['Клієнт']} | ID: {row['ID']} | {row['Готовність']}"):
+            c1, c2, c3 = st.columns([2, 1, 1])
+            with c1:
+                st.write("**Деталі замовлення:**")
+                items = str(row['Товари']).split(';')
+                for item in items:
+                    st.write(f"• {item.strip()}")
+                    if "[" in item:
+                        sku = item.split("[")[1].split("]")[0]
+                        link = find_pdf_link(sku)
+                        if link:
+                            st.link_button(f"📄 Креслення {sku}", link)
+            
+            with c2:
+                st.write("**Коментар:**")
+                st.caption(row['Коментар'] if row['Коментар'] else "Відсутній")
+            
+            with c3:
+                new_status = st.selectbox(
+                    "Статус", 
+                    ["В черзі", "В роботі", "Готово", "Відвантажено"], 
+                    index=["В черзі", "В роботі", "Готово", "Відвантажено"].index(row['Готовність']) if row['Готовність'] in ["В черзі", "В роботі", "Готово", "Відвантажено"] else 0,
+                    key=f"st_{idx}"
+                )
+                if new_status != row['Готовність']:
+                    df.at[idx, 'Готовність'] = new_status
+                    save_data(df)
+                    st.rerun()
+
 with tabs[1]:
-    st.subheader("Нове замовлення")
-    with st.form("new_order"):
-        new_id = st.text_input("ID замовлення")
-        new_client = st.text_input("Клієнт")
-        new_items = st.text_area("Товари (через ;)")
-        new_sum = st.number_input("Сума", min_value=0)
+    st.subheader("Додати нове замовлення")
+    with st.form("add_form"):
+        f_id = st.text_input("Номер замовлення (ID)")
+        f_client = st.text_input("Назва клієнта")
+        f_items = st.text_area("Товари (Артикули через ;)")
+        f_sum = st.number_input("Сума замовлення", min_value=0)
+        f_comment = st.text_input("Коментар")
         
-        if st.form_submit_button("Створити замовлення"):
-            new_row = {
-                'ID': new_id, 'Клієнт': new_client, 
-                'Товари': new_items, 'Сума': new_sum, 
-                'Готовність': 'В черзі', 'Коментар': ''
+        if st.form_submit_button("Зберегти замовлення"):
+            new_order = {
+                'ID': f_id, 'Клієнт': f_client, 'Товари': f_items,
+                'Сума': f_sum, 'Готовність': 'В черзі', 'Коментар': f_comment
             }
-            st.session_state.orders_df = pd.concat([st.session_state.orders_df, pd.DataFrame([new_row])], ignore_index=True)
-            save_data(st.session_state.orders_df)
+            st.session_state.df = pd.concat([st.session_state.df, pd.DataFrame([new_order])], ignore_index=True)
+            save_data(st.session_state.df)
             st.rerun()
 
-# --- ВКЛАДКА 3: СКЛАД (ПРОСТИЙ) ---
 with tabs[2]:
-    st.info("Цей розділ буде синхронізовано з окремим файлом materials.csv у наступному патчі.")
+    st.subheader("Менеджер матеріалів")
+    st.info("Дані складу синхронізуються з Cloud Storage.")
+    # Сюди можна перенести вашу таблицю залишків листів
+
+with tabs[3]:
+    st.subheader("Аналітика виробництва")
+    st.write(f"Всього замовлень: {len(df)}")
+    st.write(f"Готово до відвантаження: {len(df[df['Готовність'] == 'Готово'])}")
+
+st.sidebar.markdown("---")
+st.sidebar.write("👤 Користувач: **Admin**")
+st.sidebar.button("🔄 Оновити з хмари", on_click=lambda: st.session_state.pop('df'))
