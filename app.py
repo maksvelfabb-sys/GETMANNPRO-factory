@@ -79,38 +79,23 @@ def get_card_style(status):
     }
     return styles.get(status, "background-color: #FAFAFA; border: 1px solid #D1D1D1;")
 
-# --- ОНОВЛЕНА ФУНКЦІЯ ЗАВАНТАЖЕННЯ (Build 4.79) ---
-def load_csv(file_id, cols):
-    service = get_drive_service()
-    if not service: return pd.DataFrame(columns=cols)
-    try:
-        # Спочатку перевіряємо тип файлу (MIME type)
-        file_metadata = service.files().get(fileId=file_id).execute()
-        mime_type = file_metadata.get('mimeType', '')
-
-        if mime_type == 'application/vnd.google-apps.spreadsheet':
-            # Якщо це Google Sheets — ЕКСПОРТУЄМО в CSV
-            request = service.files().export_media(fileId=file_id, mimeType='text/csv')
-        else:
-            # Якщо це звичайний CSV — ЗАВАНТАЖУЄМО як є
-            request = service.files().get_media(fileId=file_id)
-
-        fh = io.BytesIO()
-        downloader = MediaIoBaseDownload(fh, request)
-        done = False
-        while not done: _, done = downloader.next_chunk()
-        fh.seek(0)
-        
-        df = pd.read_csv(fh, dtype=str).dropna(how='all').fillna("")
-        # Приводимо назви стовпців до нижнього регістру для надійності
-        df.columns = [c.lower().strip() for c in df.columns]
-        
-        for c in cols:
-            if c not in df.columns: df[c] = ""
-        return df[cols]
-    except Exception as e:
-        st.error(f"⚠️ Помилка доступу до файлу: {e}")
-        return pd.DataFrame(columns=cols)
+# --- АВТОРИЗАЦІЯ ---
+if 'auth' not in st.session_state:
+    st.title("🏭 GETMANN ERP")
+    with st.container(border=True):
+        e = st.text_input("Логін (Email)").strip()
+        p = st.text_input("Пароль", type="password").strip()
+        if st.button("Увійти", use_container_width=True):
+            if e == "maksvel.fabb@gmail.com" and p == "1234":
+                st.session_state.auth = {'email': e, 'role': 'Супер Адмін'}
+                st.rerun()
+            u_df = load_csv(USERS_CSV_ID, USER_COLS)
+            user = u_df[(u_df['email'] == e) & (u_df['password'] == str(p))]
+            if not user.empty:
+                st.session_state.auth = user.iloc[0].to_dict()
+                st.rerun()
+            else: st.error("❌ Доступ обмежено")
+    st.stop()
 
 # --- SIDEBAR МЕНЮ ---
 role = st.session_state.auth['role']
@@ -260,43 +245,3 @@ elif menu == "👥 Користувачі" and role == "Супер Адмін":
 
 elif menu == "📐 Каталог креслень": st.info("🚧 У розробці")
 elif menu == "🏗️ Матеріали": st.info("🚧 У розробці")
-
-# --- ОНОВЛЕНІ ФУНКЦІЇ (Build 4.75) ---
-
-@st.cache_data(ttl=60) # Кеш оновлюється кожну хвилину автоматично
-def load_csv(file_id, cols):
-    service = get_drive_service()
-    if not service: return pd.DataFrame(columns=cols)
-    try:
-        # Додаємо унікальний параметр до запиту, щоб уникнути кешування на рівні Google
-        request = service.files().get_media(fileId=file_id)
-        fh = io.BytesIO()
-        downloader = MediaIoBaseDownload(fh, request)
-        done = False
-        while not done: _, done = downloader.next_chunk()
-        fh.seek(0)
-        df = pd.read_csv(fh, dtype=str).fillna("")
-        for c in cols:
-            if c not in df.columns: df[c] = ""
-        return df[cols]
-    except Exception as e:
-        st.error(f"Помилка завантаження: {e}")
-        return pd.DataFrame(columns=cols)
-
-def save_csv(file_id, df):
-    service = get_drive_service()
-    if not service: return
-    try:
-        csv_data = df.to_csv(index=False).encode('utf-8')
-        media_body = MediaIoBaseUpload(io.BytesIO(csv_data), mimetype='text/csv', resumable=False)
-        service.files().update(fileId=file_id, media_body=media_body).execute()
-        # ОЧИЩЕННЯ КЕШУ ПІСЛЯ ЗБЕРЕЖЕННЯ
-        st.cache_data.clear() 
-        st.toast("Дані синхронізовано з хмарою ✅")
-    except Exception as e:
-        st.error(f"Помилка Drive: {e}")
-
-
-
-
-
