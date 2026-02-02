@@ -164,3 +164,40 @@ with tabs[0]:
 
             # Редагування
             if can_edit:
+                with st.expander("✏️ Редагувати"):
+                    with st.form(f"edit_{row['ID']}"):
+                        e_cl = st.text_input("Клієнт", value=row['Клієнт'])
+                        e_ph = st.text_input("Телефон", value=row['Телефон'])
+                        e_ct = st.text_input("Місто", value=row['Місто'])
+                        e_it = st.data_editor(pd.DataFrame(items), num_rows="dynamic")
+                        e_av = st.number_input("Аванс", value=float(avans) if 'avans' in locals() else 0.0)
+                        e_cm = st.text_area("Коментар", value=row['Коментар'])
+                        
+                        if st.form_submit_button("💾 Зберегти"):
+                            new_items = e_it.to_dict('records')
+                            for item in new_items:
+                                try: item['сума'] = round(float(item['к-ть']) * float(item['ціна']), 2)
+                                except: item['сума'] = 0
+                            
+                            mask = df['ID'] == row['ID']
+                            df.loc[mask, 'Клієнт'] = e_cl
+                            df.loc[mask, 'Телефон'] = e_ph
+                            df.loc[mask, 'Місто'] = e_ct
+                            df.loc[mask, 'Аванс'] = str(e_av)
+                            df.loc[mask, 'Коментар'] = e_cm
+                            df.loc[mask, 'Товари_JSON'] = json.dumps(new_items, ensure_ascii=False)
+                            save_csv(ORDERS_CSV_ID, df); st.rerun()
+
+with tabs[1]:
+    if role == "Супер Адмін":
+        st.subheader("Налаштування користувачів")
+        ed_u = st.data_editor(load_csv(USERS_CSV_ID, ['email', 'password', 'role', 'name']), num_rows="dynamic")
+        if st.button("💾 Зберегти користувачів"): save_csv(USERS_CSV_ID, ed_u)
+        st.divider()
+        st.subheader("Системні ID")
+        st.write(f"📁 Папка креслень: `{FOLDER_DRAWINGS_ID}`")
+        if st.checkbox("Активувати видалення"):
+            if st.button("ОЧИСТИТИ ВСІ ЗАМОВЛЕННЯ"):
+                save_csv(ORDERS_CSV_ID, pd.DataFrame(columns=COLS)); st.rerun()
+
+st.sidebar.button("🚪 Вихід", on_click=lambda: st.session_state.clear())
