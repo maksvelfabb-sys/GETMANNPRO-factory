@@ -6,30 +6,32 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
-# --- КОНФІГУРАЦІЯ ---
+# --- КЛЮЧОВІ НАЛАШТУВАННЯ (З Build 3.0) ---
 ORDERS_CSV_ID = "1Ws7rL1uyWcYbLeXsmqmaijt98Gxo6k3i"
 FOLDER_DRAWINGS_ID = "1SQyZ6OUk9xNBMvh98Ob4zw9LVaqWRtas"
 
 st.set_page_config(page_title="GETMANN Pro", layout="wide", page_icon="🏭")
 
-# --- СТИЛІЗАЦІЯ ПІД ВЕРСІЮ 3.0 ---
+# --- ОРИГІНАЛЬНИЙ СТИЛЬ 3.0 ---
 st.markdown("""
     <style>
     .order-card {
         border: 1px solid #444;
-        border-radius: 8px;
-        padding: 15px;
-        margin-bottom: 15px;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 20px;
         background-color: #1e1e1e;
+        color: white;
     }
-    .status-work { border-left: 5px solid #007bff; }
-    .status-done { border-left: 5px solid #28a745; }
-    .status-queue { border-left: 5px solid #888; }
-    .stCheckbox { margin-bottom: -15px; }
+    .status-work { border-left: 10px solid #007bff; }
+    .status-done { border-left: 10px solid #28a745; }
+    .status-queue { border-left: 10px solid #888; }
+    .stCheckbox label { font-size: 18px !important; font-weight: bold; }
+    .item-list { margin-top: 10px; font-size: 16px; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- СЕРВІСНІ ФУНКЦІЇ ---
+# --- ХМАРНІ ФУНКЦІЇ (Міст до Google Drive) ---
 @st.cache_resource
 def get_drive_service():
     if "gcp_service_account" in st.secrets:
@@ -63,9 +65,9 @@ def save_data(df):
         csv_data = df.to_csv(index=False).encode('utf-8')
         media_body = MediaIoBaseUpload(io.BytesIO(csv_data), mimetype='text/csv', resumable=True)
         service.files().update(fileId=ORDERS_CSV_ID, media_body=media_body).execute()
-        st.toast("Синхронізовано ✅")
+        st.toast("Синхронізовано з хмарою ✅")
     except Exception as e:
-        st.error(f"Помилка збереження: {e}")
+        st.error(f"Помилка синхронізації: {e}")
 
 def find_pdf_link(article):
     service = get_drive_service()
@@ -77,17 +79,19 @@ def find_pdf_link(article):
         return files[0]['webViewLink'] if files else None
     except: return None
 
-# --- ІНТЕРФЕЙС ЖУРНАЛУ ---
-st.title("📚 Журнал замовлень")
+# --- ГОЛОВНИЙ ЕКРАН (ТОЧНА КОПІЯ 3.0) ---
+st.title("🏭 GETMANN Pro | Журнал замовлень")
 
 if 'df' not in st.session_state:
     st.session_state.df = load_data()
 
-tabs = st.tabs(["📑 Журнал", "📝 Нове замовлення", "🏗️ Склад"])
+tabs = st.tabs(["📑 Журнал замовлень", "➕ Створити замовлення", "📊 Склад"])
 
 with tabs[0]:
     df = st.session_state.df
-    search = st.text_input("🔍 Швидкий пошук")
+    search = st.text_input("🔍 Пошук замовлення...", placeholder="Клієнт, ID або Артикул")
+    
+    # Фільтрація
     display_df = df[df.apply(lambda r: search.lower() in str(r.values).lower(), axis=1)] if search else df
 
     for idx, row in display_df.iterrows():
@@ -96,22 +100,24 @@ with tabs[0]:
         if status == "В роботі": css_class = "status-work"
         elif status == "Готово": css_class = "status-done"
         
-        # Відображення картки як у версії 3
+        # Рендеринг картки
         st.markdown(f"""
             <div class="order-card {css_class}">
-                <div style="display: flex; justify-content: space-between; color: #bbb; font-size: 0.9em;">
-                    <span>⌛ №{row.get('ID')} | {row.get('Дата', '02.02.2026')} | <b>{row.get('Клієнт')}</b></span>
-                    <span>Менеджер: Головний Адмін</span>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="font-size: 20px;"><b>⌛ №{row.get('ID')}</b> | {row.get('Дата')} | 👤 <b>{row.get('Клієнт')}</b></span>
+                    <span style="color: #888;">{row.get('Місто', '')}</span>
                 </div>
             </div>
         """, unsafe_allow_html=True)
         
-        # Чекбокси статусів (логіка перемикання)
-        c1, c2, _ = st.columns([1, 1, 2])
-        is_work = c1.checkbox("🏗️ У виробництво", value=(status == "В роботі"), key=f"ch_w_{idx}")
-        is_done = c2.checkbox("✅ Виконано", value=(status == "Готово"), key=f"ch_d_{idx}")
+        # Функціональні кнопки та чекбокси як у 3.0
+        c1, c2, c3 = st.columns([1, 1, 2])
         
-        # Обробка зміни чекбоксів
+        # Логіка чекбоксів
+        is_work = c1.checkbox("🏗️ У виробництво", value=(status == "В роботі"), key=f"w_{idx}")
+        is_done = c2.checkbox("✅ Виконано", value=(status == "Готово"), key=f"d_{idx}")
+        
+        # Автоматичне оновлення статусу при натисканні
         new_status = status
         if is_done: new_status = "Готово"
         elif is_work: new_status = "В роботі"
@@ -122,46 +128,64 @@ with tabs[0]:
             save_data(df)
             st.rerun()
 
-        # Список товарів списком (булітами)
+        # Вивід товарів (Список як у 3.0)
+        st.markdown("**📦 Товари та деталі:**")
         items = str(row.get('Товари', '')).split(';')
         for item in items:
             if item.strip():
-                st.markdown(f"• {item.strip()}")
+                col_item, col_link = st.columns([3, 1])
+                col_item.write(f"• {item.strip()}")
                 if "[" in item:
                     sku = item.split("[")[1].split("]")[0]
                     link = find_pdf_link(sku)
-                    if link: st.link_button(f"📄 Креслення {sku}", link, src="small")
+                    if link:
+                        col_link.link_button("📄 Креслення", link)
 
-        # Редагування деталей (Expander як на фото)
-        with st.expander("📝 Редагувати деталі"):
-            col_a, col_b = st.columns(2)
-            u_client = col_a.text_input("Клієнт", value=str(row.get('Клієнт')), key=f"u_cl_{idx}")
-            u_phone = col_b.text_input("Телефон", value=str(row.get('Телефон')), key=f"u_ph_{idx}")
-            u_items = st.text_area("Товари", value=str(row.get('Товари')), key=f"u_it_{idx}")
-            u_city = st.text_input("Місто/Відділення", value=f"{row.get('Місто')} / {row.get('Відділення')}", key=f"u_ct_{idx}")
+        # РЕДАКТОР (Як у 3.0)
+        with st.expander("🛠️ Редагувати замовлення"):
+            col1, col2 = st.columns(2)
+            u_id = col1.text_input("ID", value=str(row.get('ID')), key=f"edit_id_{idx}")
+            u_cl = col2.text_input("Клієнт", value=str(row.get('Клієнт')), key=f"edit_cl_{idx}")
+            u_ph = col1.text_input("Телефон", value=str(row.get('Телефон')), key=f"edit_ph_{idx}")
+            u_ct = col2.text_input("Місто/Відділення", value=f"{row.get('Місто')} / {row.get('Відділення')}", key=f"edit_ct_{idx}")
+            u_it = st.text_area("Товари (через ;)", value=str(row.get('Товари')), key=f"edit_it_{idx}")
+            u_co = st.text_input("Коментар", value=str(row.get('Коментар')), key=f"edit_co_{idx}")
             
-            if st.button("💾 Зберегти зміни", key=f"u_btn_{idx}"):
-                df.at[idx, 'Клієнт'] = u_client
-                df.at[idx, 'Телефон'] = u_phone
-                df.at[idx, 'Товари'] = u_items
-                # Розділяємо місто та відділення назад
-                if "/" in u_city:
-                    parts = u_city.split("/")
-                    df.at[idx, 'Місто'] = parts[0].strip()
-                    df.at[idx, 'Відділення'] = parts[1].strip()
+            if st.button("💾 Зберегти зміни", key=f"save_btn_{idx}"):
+                df.at[idx, 'ID'], df.at[idx, 'Клієнт'] = u_id, u_cl
+                df.at[idx, 'Телефон'], df.at[idx, 'Товари'] = u_ph, u_it
+                df.at[idx, 'Коментар'] = u_co
+                if "/" in u_ct:
+                    df.at[idx, 'Місто'], df.at[idx, 'Відділення'] = u_ct.split("/")[0].strip(), u_ct.split("/")[1].strip()
                 save_data(df)
                 st.rerun()
+        st.markdown("---")
 
 with tabs[1]:
-    st.subheader("🆕 Нове замовлення")
-    with st.form("new"):
+    st.subheader("📝 Створення нового замовлення")
+    with st.form("new_order_form"):
         f1, f2 = st.columns(2)
-        fid = f1.text_input("ID замовлення")
-        fcl = f2.text_input("Клієнт")
-        fit = st.text_area("Товари (через ;)")
-        if st.form_submit_button("Додати в журнал"):
-            new_r = {'ID': fid, 'Клієнт': fcl, 'Товари': fit, 'Дата': datetime.now().strftime("%d.%m.%Y"), 'Готовність': 'В черзі'}
-            st.session_state.df = pd.concat([st.session_state.df, pd.DataFrame([new_r])], ignore_index=True)
-            save_data(st.session_state.df); st.rerun()
+        new_id = f1.text_input("Номер (ID)")
+        new_cl = f2.text_input("Клієнт")
+        new_ph = f1.text_input("Телефон")
+        new_ct = f2.text_input("Місто / Відділення")
+        new_it = st.text_area("Товари (Артикули в [])")
+        new_co = st.text_input("Коментар")
+        
+        if st.form_submit_button("Додати в базу"):
+            city = new_ct.split("/")[0].strip() if "/" in new_ct else new_ct
+            post = new_ct.split("/")[1].strip() if "/" in new_ct else ""
+            
+            new_row = {
+                'ID': new_id, 'Дата': datetime.now().strftime("%d.%m.%Y"),
+                'Клієнт': new_cl, 'Телефон': new_phone, 'Місто': city, 'Відділення': post,
+                'Товари': new_it, 'Коментар': new_co, 'Готовність': 'В черзі'
+            }
+            st.session_state.df = pd.concat([st.session_state.df, pd.DataFrame([new_row])], ignore_index=True)
+            save_data(st.session_state.df)
+            st.rerun()
 
-st.sidebar.button("🔄 Оновити", on_click=lambda: st.session_state.pop('df'))
+st.sidebar.markdown("### ⚙️ Керування")
+if st.sidebar.button("🔄 Оновити дані з хмари"):
+    st.session_state.pop('df')
+    st.rerun()
