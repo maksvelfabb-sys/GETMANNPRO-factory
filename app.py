@@ -1,45 +1,91 @@
 import streamlit as st
-from modules import order_ui, material_manager, user_manager
-from styles import set_custom_css
+import pandas as pd
+import io
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 
-st.set_page_config(page_title="GETMANN Pro", layout="wide")
-set_custom_css()
+# --- НАЛАШТУВАННЯ (Build 4.0) ---
+# Ці ID отримані з ваших посилань на Google Диск
+FOLDER_DRAWINGS_ID = "1SQyZ6OUk9xNBMvh98Ob4zw9LVaqWRtas"  # Папка з PDF
+ORDERS_CSV_ID = "1Ws7rL1uyWcYbLeXsmqmaijt98Gxo6k3i"      # Файл orders.csv
 
-if "auth" not in st.session_state:
-    st.session_state.auth = False
+st.set_page_config(
+    page_title="Factory CRM | Build 4.0",
+    page_icon="🏭",
+    layout="wide"
+)
 
-if not st.session_state.auth:
-    st.markdown("<h1 style='text-align: center;'>🔐 GETMANN Pro</h1>", unsafe_allow_html=True)
-    col1, col2, col3 = st.columns([1, 1.5, 1])
-    with col2:
-        with st.form("login_form"):
-            l = st.text_input("Логін").lower().strip()
-            p = st.text_input("Пароль", type="password").strip()
-            if st.form_submit_button("УВІЙТИ", use_container_width=True):
-                if l == MASTER_ADMIN["login"] and p == MASTER_ADMIN["password"]:
-                    st.session_state.update({"auth": True, "user_role": MASTER_ADMIN["role"], "user_name": MASTER_ADMIN["name"]})
-                    st.rerun()
-                else:
-                    try:
-                        df = read_db("staff.csv", ["login", "password", "role", "name"])
-                        user = df[(df['login'].astype(str) == l) & (df['password'].astype(str) == p)]
-                        if not user.empty:
-                            st.session_state.update({"auth": True, "user_role": user.iloc[0]['role'], "user_name": user.iloc[0]['name']})
-                            st.rerun()
-                        else: st.error("Помилка авторизації")
-                    except: st.error("База порожня. Використовуйте Admin.")
-else:
-    st.sidebar.title("🚀 GETMANN Pro")
-    st.sidebar.write(f"👤 {st.session_state.user_name}")
-    choice = st.sidebar.radio("Меню", ["📊 Журнал", "📝 Нове замовлення", "🏗️ Склад", "👥 Персонал"])
+# --- ПІДКЛЮЧЕННЯ ДО GOOGLE DRIVE ---
+@st.cache_resource
+def get_drive_service():
+    """Авторизація через Secrets або локальний JSON"""
+    try:
+        if "gcp_service_account" in st.secrets:
+            # Для Streamlit Cloud (використовуємо Secrets)
+            info = st.secrets["gcp_service_account"]
+        else:
+            # Для локальної перевірки (потрібен файл у папці)
+            import json
+            with open("service_account.json") as f:
+                info = json.load(f)
+        
+        creds = service_account.Credentials.from_service_account_info(info)
+        return build('drive', 'v3', credentials=creds)
+    except Exception as e:
+        st.error(f"Помилка авторизації Google: {e}")
+        return None
+
+def load_data():
+    """Завантаження бази замовлень CSV з Google Drive"""
+    service = get_drive_service()
+    if not service: return pd.DataFrame()
     
-    if st.sidebar.button("Вихід"):
-        st.session_state.auth = False
-        st.rerun()
+    try:
+        request = service.files().get_media(fileId=ORDERS_CSV_ID)
+        fh = io.BytesIO()
+        downloader = MediaIoBaseDownload(fh, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        
+        fh.seek(0)
+        df = pd.read_csv(fh)
+        
+        # Базова обробка дат, якщо вони є
+        if 'Дата' in df.columns:
+            df['Дата'] = pd.to_datetime(df['Дата'], errors='coerce').dt.date
+        return df
+    except Exception as e:
+        st.error(f"Не вдалося зчитати CSV: {e}")
+        return pd.DataFrame()
 
-    if choice == "📊 Журнал": order_ui.display_orders_list()
-    elif choice == "📝 Нове замовлення": order_ui.render_order_form()
-    elif choice == "🏗️ Склад": material_manager.show_manager()
+def find_pdf_link(article):
+    """Пошук прямого посилання на PDF креслення за артикулом"""
+    service = get_drive_service()
+    if not service: return None
+    
+    try:
+        # Шукаємо файл, де назва дорівнює Артикул.pdf у конкретній папці
+        query = f"name = '{article}.pdf' and '{FOLDER_DRAWINGS_ID}' in parents and trashed = false"
+        results = service.files().list(q=query, fields="files(id, webViewLink)").execute()
+        files = results.get('files', [])
+        return files[0]['webViewLink'] if files else None
+    except:
+        return None
 
-    elif choice == "👥 Персонал": user_manager.show_user_editor()
-
+# --- ЛОГІКА РОЗШИФРОВКИ АРТИКУЛА ---
+def decode_sku(sku):
+    """Парсинг за правилом: 40(товщина)WSF(тип).FA6(матеріал)"""
+    try:
+        sku = str(sku).strip()
+        thickness = sku[:2]  # Перші дві цифри
+        type_code = sku[2:5] # Наступні три літери
+        
+        material = "Стандарт"
+        if "FA6" in sku:
+            material = "Алюміній (FA6)"
+        elif "ST" in sku:
+            material = "Сталь"
+            
+        return f"📏 {thickness}мм | 🏗️ {type_code}
