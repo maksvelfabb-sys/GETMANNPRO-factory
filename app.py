@@ -19,17 +19,22 @@ st.set_page_config(
 # --- ПІДКЛЮЧЕННЯ ДО GOOGLE DRIVE ---
 @st.cache_resource
 def get_drive_service():
-    """Авторизація: спочатку пробуємо Secrets, потім локальний файл"""
     try:
-        # Пріоритет: Streamlit Secrets
         if "gcp_service_account" in st.secrets:
+            # Створюємо копію словника з Secrets
             info = dict(st.secrets["gcp_service_account"])
-            # Важливо: виправляємо символи переносу рядка, якщо вони збилися
-            if "private_key" in info:
-                info["private_key"] = info["private_key"].replace("\\n", "\n")
+            
+            # ВИПРАВЛЕННЯ КЛЮЧА:
+            # Прибираємо зайві лапки та виправляємо екрановані переноси рядків
+            key = info["private_key"].replace("\\n", "\n").strip()
+            # Якщо ключ загорнутий у подвійні лапки всередині рядка — прибираємо їх
+            if key.startswith('"') and key.endswith('"'):
+                key = key[1:-1]
+            info["private_key"] = key
+            
             creds = service_account.Credentials.from_service_account_info(info)
         else:
-            # Тільки для локальної розробки
+            # Для локальної розробки
             import json
             with open("service_account.json") as f:
                 info = json.load(f)
@@ -169,5 +174,6 @@ st.sidebar.image("https://via.placeholder.com/150?text=FACTORY", width=100)
 st.sidebar.markdown("---")
 st.sidebar.write("**Build 4.0 Stable**")
 st.sidebar.write("Хмарна версія")
+
 
 
