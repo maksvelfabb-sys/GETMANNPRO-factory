@@ -8,7 +8,7 @@ from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
 # --- КОНФІГУРАЦІЯ ---
 ORDERS_CSV_ID = "1Ws7rL1uyWcYbLeXsmqmaijt98Gxo6k3i"
-USERS_CSV_ID = "1ibrEFKOyvt5xgC_vSMhvDmNxdO1pVYfr4a-TqgJM82Y"
+USERS_CSV_ID = "1qwPXMqIwDATgIsYHo7us6yQgE-JyhT7f" 
 FOLDER_DRAWINGS_ID = "1SQyZ6OUk9xNBMvh98Ob4zw9LVaqWRtas"
 COLS = ['ID', 'Дата', 'Клієнт', 'Телефон', 'Місто', 'ТТН', 'Товари_JSON', 'Аванс', 'Готовність', 'Коментар']
 USER_COLS = ['email', 'password', 'role']
@@ -83,18 +83,18 @@ def get_card_style(status):
 if 'auth' not in st.session_state:
     st.title("🏭 GETMANN ERP")
     with st.container(border=True):
-        e = st.text_input("Логін (Email)").strip()
-        p = st.text_input("Пароль", type="password").strip()
+        e_in = st.text_input("Логін (Email)").strip().lower()
+        p_in = st.text_input("Пароль", type="password").strip()
         if st.button("Увійти", use_container_width=True):
-            if e == "maksvel.fabb@gmail.com" and p == "1234":
-                st.session_state.auth = {'email': e, 'role': 'Супер Адмін'}
+            if e_in == "maksvel.fabb@gmail.com" and p_in == "1234":
+                st.session_state.auth = {'email': e_in, 'role': 'Супер Адмін'}
                 st.rerun()
             u_df = load_csv(USERS_CSV_ID, USER_COLS)
-            user = u_df[(u_df['email'] == e) & (u_df['password'] == str(p))]
+            user = u_df[(u_df['email'].str.lower() == e_in) & (u_df['password'] == p_in)]
             if not user.empty:
                 st.session_state.auth = user.iloc[0].to_dict()
                 st.rerun()
-            else: st.error("❌ Доступ обмежено")
+            else: st.error("Доступ обмежено")
     st.stop()
 
 # --- SIDEBAR МЕНЮ ---
@@ -245,3 +245,4 @@ elif menu == "👥 Користувачі" and role == "Супер Адмін":
 
 elif menu == "📐 Каталог креслень": st.info("🚧 У розробці")
 elif menu == "🏗️ Матеріали": st.info("🚧 У розробці")
+
