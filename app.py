@@ -6,139 +6,89 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
-# --- КОНФІГУРАЦІЯ ---
+# --- КОНФІГУРАЦІЯ ТА БЕЗПЕКА ---
 ORDERS_CSV_ID = "1Ws7rL1uyWcYbLeXsmqmaijt98Gxo6k3i"
-FOLDER_DRAWINGS_ID = "1SQyZ6OUk9xNBMvh98Ob4zw9LVaqWRtas"
-ADMIN_PASSWORD = "admin"  # Змініть на свій
+USERS_CSV_ID = "1_id_вашого_файла_користувачів" # Створіть файл з полями: username, password, role
+st.set_page_config(page_title="GETMANN Factory Control", layout="wide")
 
-st.set_page_config(page_title="GETMANN Pro", layout="wide", page_icon="🏭")
+# Визначення прав для ролей
+ROLE_PERMISSIONS = {
+    "Адмін": {"view_finance": True, "edit_orders": True, "admin_tab": True, "view_contacts": True},
+    "Менеджер": {"view_finance": True, "edit_orders": True, "admin_tab": False, "view_contacts": True},
+    "Токар": {"view_finance": False, "edit_orders": False, "admin_tab": False, "view_contacts": False}
+}
 
-# --- СТИЛІЗАЦІЯ ---
-st.markdown("""
-    <style>
-    .order-header { padding: 12px; border-radius: 8px; color: white; font-weight: bold; margin-bottom: 5px; display: flex; justify-content: space-between; }
-    .header-work { background-color: #007bff; }
-    .header-done { background-color: #28a745; }
-    .header-queue { background-color: #444; }
-    div[data-testid="stExpander"] { border: 1px solid #444; border-radius: 8px; background: #1e1e1e; }
-    .admin-stat { padding: 20px; border-radius: 10px; background: #262730; border: 1px solid #333; text-align: center; }
-    </style>
-""", unsafe_allow_html=True)
+# --- ФУНКЦІЇ ДОСТУПУ ---
+def check_login():
+    if "user" not in st.session_state:
+        st.title("🔐 Вхід у систему")
+        user = st.text_input("Логін")
+        pw = st.text_input("Пароль", type="password")
+        if st.button("Увійти"):
+            # Тут можна підключити USERS_CSV_ID для перевірки
+            # Тимчасовий хардкод для тесту:
+            if user == "admin" and pw == "1234":
+                st.session_state.user = {"name": "Адмін", "role": "Адмін"}
+                st.rerun()
+            elif user == "master" and pw == "5555":
+                st.session_state.user = {"name": "Іван (Токар)", "role": "Токар"}
+                st.rerun()
+            else:
+                st.error("Невірні дані")
+        return False
+    return True
 
-# --- СЕРВІСНІ ФУНКЦІЇ ---
-def safe_float(value):
-    try:
-        if isinstance(value, str): value = value.replace(',', '.').strip()
-        return float(value) if value else 0.0
-    except: return 0.0
+if not check_login():
+    st.stop()
 
-@st.cache_resource
-def get_drive_service():
-    if "gcp_service_account" in st.secrets:
-        info = dict(st.secrets["gcp_service_account"])
-        info["private_key"] = info["private_key"].replace("\\n", "\n").strip()
-        creds = service_account.Credentials.from_service_account_info(info)
-        return build('drive', 'v3', credentials=creds)
-    return None
+user_role = st.session_state.user["role"]
+perms = ROLE_PERMISSIONS[user_role]
 
-def load_data():
-    service = get_drive_service()
-    if not service: return pd.DataFrame()
-    try:
-        request = service.files().get_media(fileId=ORDERS_CSV_ID)
-        fh = io.BytesIO()
-        downloader = MediaIoBaseDownload(fh, request)
-        done = False
-        while not done: _, done = downloader.next_chunk()
-        fh.seek(0)
-        df = pd.read_csv(fh).fillna("")
-        df.columns = df.columns.str.strip()
-        return df
-    except:
-        return pd.DataFrame(columns=['ID', 'Дата', 'Клієнт', 'Телефон', 'Місто', 'Товари_JSON', 'Аванс', 'Готовність', 'Коментар'])
+# --- ГРУПУВАННЯ ІНТЕРФЕЙСУ ЗА ПРАВАМИ ---
+st.sidebar.write(f"👤 Користувач: **{st.session_state.user['name']}**")
+st.sidebar.write(f"🛡️ Роль: `{user_role}`")
 
-def save_data(df):
-    service = get_drive_service()
-    if not service: return
-    try:
-        csv_data = df.to_csv(index=False).encode('utf-8')
-        media_body = MediaIoBaseUpload(io.BytesIO(csv_data), mimetype='text/csv', resumable=True)
-        service.files().update(fileId=ORDERS_CSV_ID, media_body=media_body).execute()
-        st.toast("Збережено в Google Drive ✅")
-    except Exception as e:
-        st.error(f"Помилка збереження: {e}")
+tabs_list = ["📋 Журнал"]
+if perms["edit_orders"]: tabs_list.append("➕ Нове замовлення")
+if perms["admin_tab"]: tabs_list.append("⚙️ Адмін-панель")
+tabs = st.tabs(tabs_list)
 
-# --- ГОЛОВНИЙ ІНТЕРФЕЙС ---
-if 'df' not in st.session_state:
-    st.session_state.df = load_data()
-
-tabs = st.tabs(["📋 Журнал", "➕ Нове замовлення", "⚙️ Адмін-панель"])
-
-# --- ВКЛАДКА ЖУРНАЛУ (Аналогічно Build 4.17) ---
+# --- ЛОГІКА ЖУРНАЛУ (З ФІЛЬТРОМ ПРАВ) ---
 with tabs[0]:
-    df = st.session_state.df
-    search = st.text_input("🔍 Пошук замовлень...")
-    # ... логіка відображення карток замовлень ...
-    # (Використовуйте попередній код для рендерингу карток тут)
+    df = load_data() # ваша функція завантаження
+    for idx, row in df.iterrows():
+        # СТАТУСНА ШАПКА (Бачать всі)
+        st.markdown(f"### №{row['ID']} | {row['Клієнт'] if perms['view_contacts'] else 'ЗАМОВЛЕННЯ'}")
+        
+        with st.expander("👁️ Переглянути деталі"):
+            # Відображення товарів та креслень (Бачать всі)
+            items = json.loads(row['Товари_JSON'])
+            for i in items:
+                st.write(f"• {i['назва']} (Арт: {i['арт']}) - **{i['к-ть']} шт**")
+                # Кнопка креслення доступна всім ролям
+                # if i['арт']: find_and_show_pdf(i['арт']) 
 
-# --- ВКЛАДКА НОВОГО ЗАМОВЛЕННЯ ---
-with tabs[1]:
-    with st.form("new_order"):
-        # ... поля створення нового замовлення ...
-        if st.form_submit_button("Створити"):
-            # ... додавання в df ...
-            save_data(st.session_state.df); st.rerun()
+            st.divider()
+            
+            # ФІНАНСОВИЙ БЛОК (Лише Адмін/Менеджер)
+            if perms["view_finance"]:
+                st.write(f"💰 Сума: {row['Сума']} | Аванс: {row['Аванс']}")
+            
+            # КОНТАКТИ (Лише Адмін/Менеджер)
+            if perms["view_contacts"]:
+                st.write(f"📞 {row['Телефон']} | 📍 {row['Місто']}")
 
-# --- НОВА АДМІН-ПАНЕЛЬ ---
-with tabs[2]:
-    st.header("⚙️ Керування системою")
-    
-    pwd = st.text_input("Введіть пароль адміністратора", type="password")
-    
-    if pwd == ADMIN_PASSWORD:
-        st.success("Доступ дозволено")
-        
-        # Блок статистики
-        st.subheader("📊 Аналітика")
-        col1, col2, col3 = st.columns(3)
-        
-        total_debt = 0.0
-        active_orders = len(st.session_state.df[st.session_state.df['Готовність'] != 'Готово'])
-        
-        # Розрахунок загальної суми боргів
-        for _, r in st.session_state.df.iterrows():
-            try:
-                items = json.loads(r['Товари_JSON'])
-                order_sum = sum(safe_float(i.get('к-ть')) * safe_float(i.get('ціна')) for i in items)
-                total_debt += (order_sum - safe_float(r.get('Аванс')))
-            except: continue
-            
-        col1.markdown(f'<div class="admin-stat">🏁 В роботі<br><h3>{active_orders}</h3></div>', unsafe_allow_html=True)
-        col2.markdown(f'<div class="admin-stat">💰 Очікується оплат<br><h3>{total_debt} грн</h3></div>', unsafe_allow_html=True)
-        col3.markdown(f'<div class="admin-stat">📅 Сьогодні<br><h3>{datetime.now().strftime("%d.%m")}</h3></div>', unsafe_allow_html=True)
-        
-        st.divider()
-        
-        # Керування базою
-        st.subheader("🗄️ Пряме редагування бази")
-        edited_df = st.data_editor(st.session_state.df, num_rows="dynamic", use_container_width=True)
-        
-        if st.button("💾 Глобально зберегти зміни бази", type="primary"):
-            st.session_state.df = edited_df
-            save_data(edited_df)
-            st.rerun()
-            
-        st.divider()
-        
-        # Небезпечна зона
-        st.subheader("⚠️ Небезпечна зона")
-        if st.button("🗑️ Видалити всі виконані замовлення"):
-            new_df = st.session_state.df[st.session_state.df['Готовність'] != 'Готово']
-            st.session_state.df = new_df
-            save_data(new_df)
-            st.rerun()
-            
-    elif pwd != "":
-        st.error("Невірний пароль")
+            # КНОПКИ СТАТУСУ (Токар може лише завершити)
+            if user_role == "Токар":
+                if st.button("✅ Я виконав це замовлення", key=f"done_{idx}"):
+                    update_status(idx, "Готово")
+            elif perms["edit_orders"]:
+                # Повний блок редагування для Менеджера/Адміна
+                pass
 
-st.sidebar.button("🔄 Оновити дані", on_click=lambda: st.session_state.pop('df'))
+# --- АДМІНКА (ТІЛЬКИ ДЛЯ АДМІНІВ) ---
+if perms["admin_tab"]:
+    with tabs[-1]:
+        st.header("Керування користувачами")
+        # Тут можна додавати нових користувачів у USERS_CSV_ID
+        st.info("Тут ви можете змінювати ролі працівників")
