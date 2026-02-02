@@ -230,50 +230,18 @@ elif menu == "⚙️ Налаштування":
 # --- СТОРІНКА: КОРИСТУВАЧІ ---
 elif menu == "👥 Користувачі" and role == "Супер Адмін":
     st.header("Керування командою")
-    
-    # Завантажуємо актуальний список
     u_df = load_csv(USERS_CSV_ID, USER_COLS)
-    
-    with st.expander("➕ Додати нового користувача", expanded=True):
-        with st.form("add_user_form", clear_on_submit=True):
-            new_e = st.text_input("Email / Логін").strip()
-            new_p = st.text_input("Пароль").strip()
-            new_r = st.selectbox("Роль", ["Менеджер", "Адмін", "Токар", "Гість"])
-            
-            if st.form_submit_button("Створити та зберегти"):
-                if new_e and new_p:
-                    # Перевірка, чи не існує вже такий користувач
-                    if new_e in u_df['email'].values:
-                        st.error(f"Користувач {new_e} вже існує!")
-                    else:
-                        # Створюємо новий рядок
-                        new_data = pd.DataFrame([{'email': new_e, 'password': new_p, 'role': new_r}])
-                        # Об'єднуємо та зберігаємо
-                        updated_df = pd.concat([u_df, new_data], ignore_index=True)
-                        save_csv(USERS_CSV_ID, updated_df)
-                        
-                        st.success(f"Користувача {new_e} додано!")
-                        st.cache_resource.clear() # Скидаємо кеш, щоб дані оновилися
-                        st.rerun()
-                else:
-                    st.warning("Заповніть Email та Пароль")
-
-    st.divider()
-    st.subheader("Список доступів")
+    with st.expander("➕ Додати користувача"):
+        with st.form("add_u"):
+            ne, np, nr = st.text_input("Email"), st.text_input("Пароль"), st.selectbox("Роль", ["Менеджер", "Адмін", "Токар", "Гість"])
+            if st.form_submit_button("Створити"):
+                u_df = pd.concat([u_df, pd.DataFrame([{'email': ne, 'password': np, 'role': nr}])], ignore_index=True)
+                save_csv(USERS_CSV_ID, u_df); st.rerun()
     st.dataframe(u_df, use_container_width=True)
-    
-    if not u_df.empty:
-        del_email = st.selectbox("Оберіть користувача для видалення", u_df['email'].unique())
-        if st.button("❌ Видалити доступ", type="primary"):
-            # Не дозволяємо видалити самого себе через цей інтерфейс
-            if del_email == st.session_state.auth['email']:
-                st.error("Ви не можете видалити власного користувача!")
-            else:
-                updated_df = u_df[u_df['email'] != del_email]
-                save_csv(USERS_CSV_ID, updated_df)
-                st.cache_resource.clear()
-                st.rerun()
+    del_u = st.selectbox("Видалити користувача", u_df['email'].unique())
+    if st.button("Видалити"):
+        u_df = u_df[u_df['email'] != del_u]
+        save_csv(USERS_CSV_ID, u_df); st.rerun()
 
 elif menu == "📐 Каталог креслень": st.info("🚧 У розробці")
 elif menu == "🏗️ Матеріали": st.info("🚧 У розробці")
-
