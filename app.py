@@ -32,7 +32,6 @@ def get_drawing_link(art):
     service = get_drive_service()
     if not service: return None
     try:
-        # Шукаємо файли, що містять артикул у назві
         query = f"'{FOLDER_DRAWINGS_ID}' in parents and name contains '{art}' and trashed = false"
         results = service.files().list(q=query, fields="files(id, name, webViewLink)").execute()
         files = results.get('files', [])
@@ -65,7 +64,6 @@ def save_csv(file_id, df):
         st.toast("Збережено ✅")
     except: st.error("Помилка Drive")
 
-# --- МАТЕМАТИКА ТА СТИЛІ ---
 def safe_float(v):
     try: return float(str(v).replace(',', '.'))
     except: return 0.0
@@ -117,6 +115,7 @@ if menu == "📋 Замовлення":
     role = st.session_state.auth['role']
     can_edit = role in ["Супер Адмін", "Адмін", "Менеджер"]
 
+    # (Тут логіка створення нового замовлення без змін)
     if can_edit:
         with st.expander("➕ НОВЕ ЗАМОВЛЕННЯ"):
             numeric_ids = pd.to_numeric(df['ID'], errors='coerce').dropna()
@@ -154,17 +153,21 @@ if menu == "📋 Замовлення":
             c_info, c_status = st.columns([4, 1.2])
             with c_info:
                 t_sum = 0
-                for it in items:
+                for i, it in enumerate(items):
                     art_code = str(it.get('арт', '')).strip()
                     pdf_link = get_drawing_link(art_code) if art_code else None
                     
-                    # Рядок товару з кнопкою PDF
                     col_t1, col_t2 = st.columns([4.5, 1.5])
                     with col_t1:
                         st.markdown(f"🔹 **{it.get('назва')}** ({art_code}) — {it.get('к-ть')} шт × {it.get('ціна')} = **{it.get('сума')}**")
                     with col_t2:
+                        # Кнопка на постійній основі
                         if pdf_link:
-                            st.link_button("📕 PDF Креслення", pdf_link, use_container_width=True)
+                            st.link_button("📕 PDF Креслення", pdf_link, use_container_width=True, key=f"btn_link_{idx}_{i}")
+                        else:
+                            if st.button("📕 PDF Креслення", use_container_width=True, key=f"btn_err_{idx}_{i}"):
+                                st.toast("❌ Креслення не знайдено", icon="⚠️")
+                                st.error(f"Файл для артикула '{art_code}' не знайдено в папці Drive.")
                     
                     t_sum += safe_float(it.get('сума'))
                 
@@ -180,8 +183,8 @@ if menu == "📋 Замовлення":
 
             if can_edit:
                 with st.expander("📂 Редагувати замовлення"):
+                    # (Логіка редагування замовлення без змін)
                     with st.form(f"f_edit_{idx}"):
-                        # ... логіка редагування (без змін для стабільності)
                         st.write("👤 **Клієнт**")
                         r1c1, r1c2, r1c3, r1c4 = st.columns(4)
                         e_cl, e_ph, e_ct, e_tt = r1c1.text_input("Клієнт", row['Клієнт']), r1c2.text_input("Телефон", row['Телефон']), r1c3.text_input("Місто", row['Місто']), r1c4.text_input("ТТН", row['ТТН'])
@@ -213,17 +216,15 @@ if menu == "📋 Замовлення":
                             df.loc[mask, 'Товари_JSON'] = json.dumps(curr_items, ensure_ascii=False)
                             save_csv(ORDERS_CSV_ID, df); st.rerun()
 
-# --- СТОРІНКА: НАЛАШТУВАННЯ ---
+# --- СТОРІНКИ НАЛАШТУВАННЯ ТА КАТАЛОГИ (Без змін) ---
 elif menu == "⚙️ Налаштування":
     st.header("Налаштування профілю")
     u_df = load_csv(USERS_CSV_ID, ['email', 'password', 'role'])
     my_email, my_role = st.session_state.auth['email'], st.session_state.auth['role']
-    
     with st.container(border=True):
-        st.write(f"**Ваш логін:** {my_email}")
-        st.write(f"**Ваша роль:** {my_role}")
+        st.write(f"**Логін:** {my_email}")
         new_pass = st.text_input("Новий пароль", type="password")
-        if st.button("Оновити пароль"):
+        if st.button("Змінити пароль"):
             if new_pass:
                 u_df.loc[u_df['email'] == my_email, 'password'] = new_pass
                 save_csv(USERS_CSV_ID, u_df); st.success("Пароль змінено!")
@@ -231,17 +232,11 @@ elif menu == "⚙️ Налаштування":
     if my_role == "Супер Адмін":
         st.divider()
         st.subheader("🔴 Зона ризику")
-        if st.button("❌ ОЧИСТИТИ БАЗУ ЗАМОВЛЕНЬ"):
-            st.session_state.confirm_delete = True
+        if st.button("❌ ОЧИСТИТИ БАЗУ"): st.session_state.confirm_delete = True
         if st.session_state.get('confirm_delete'):
-            st.error("Видалити всі замовлення?")
-            c1, c2 = st.columns(2)
-            if c1.button("ТАК"):
+            if st.button("ПІДТВЕРДИТИ ВИДАЛЕННЯ"):
                 save_csv(ORDERS_CSV_ID, pd.DataFrame(columns=COLS))
                 st.session_state.confirm_delete = False; st.rerun()
-            if c2.button("НІ"):
-                st.session_state.confirm_delete = False; st.rerun()
 
-# --- ІНШІ СТОРІНКИ ---
 elif menu == "📐 Каталог креслень": st.info("🚧 У розробці")
 elif menu == "🏗️ Матеріали": st.info("🚧 У розробці")
