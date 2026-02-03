@@ -2,7 +2,8 @@ import streamlit as st
 import pandas as pd
 import io
 from googleapiclient.http import MediaIoBaseDownload
-from modules.drawings import get_drive_service
+# Змінено: додано крапку для пошуку всередині цієї ж папки
+from .drawings import get_drive_service 
 
 USERS_CSV_ID = "1qwPXMqIwDATgIsYHo7us6yQgE-JyhT7f"
 
