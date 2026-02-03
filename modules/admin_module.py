@@ -11,13 +11,29 @@ ORDERS_CSV_ID = "1Ws7rL1uyWcYbLeXsmqmaijt98Gxo6k3i"
 def load_csv(file_id):
     service = get_drive_service()
     if not service: return pd.DataFrame()
-    request = service.files().get_media(fileId=file_id)
-    fh = io.BytesIO()
-    downloader = MediaIoBaseDownload(fh, request)
-    done = False
-    while not done: _, done = downloader.next_chunk()
-    fh.seek(0)
-    return pd.read_csv(fh, dtype=str).fillna("")
+    try:
+        request = service.files().get_media(fileId=file_id)
+        fh = io.BytesIO()
+        downloader = MediaIoBaseDownload(fh, request)
+        done = False
+        while not done: _, done = downloader.next_chunk()
+        fh.seek(0)
+        df = pd.read_csv(fh, dtype=str).fillna("")
+        
+        # Автоматичне виправлення структури, якщо колонок немає
+        required_cols = ['email', 'login', 'password', 'role', 'last_seen']
+        if file_id == USERS_CSV_ID:
+            changed = False
+            for col in required_cols:
+                if col not in df.columns:
+                    df[col] = ""
+                    changed = True
+            if changed: # Зберігаємо виправлену структуру назад на Drive
+                save_csv(file_id, df)
+        return df
+    except Exception as e:
+        st.error(f"Помилка читання CSV: {e}")
+        return pd.DataFrame()
 
 def save_csv(file_id, df):
     service = get_drive_service()
@@ -32,11 +48,15 @@ def show_admin_panel():
     
     u_df = load_csv(USERS_CSV_ID)
     
+    # Використовуємо тільки ті колонки, які точно є (після нашої перевірки вище)
+    display_cols = ['email', 'login', 'role', 'last_seen']
+    
     t1, t2, t3 = st.tabs(["👥 Користувачі", "🔑 Паролі", "💾 База"])
 
     with t1:
         st.subheader("Список користувачів")
-        st.dataframe(u_df[['email', 'login', 'role', 'last_seen']], use_container_width=True)
+        if not u_df.empty:
+            st.dataframe(u_df[display_cols], use_container_width=True)
         
         with st.expander("➕ Додати користувача"):
             with st.form("add_user"):
@@ -45,27 +65,33 @@ def show_admin_panel():
                 n_pass = st.text_input("Пароль")
                 n_role = st.selectbox("Роль", ["Адмін", "Менеджер", "Виробництво"])
                 if st.form_submit_button("Зберегти"):
-                    new_u = pd.DataFrame([{'email': n_email, 'login': n_login, 'password': n_pass, 'role': n_role, 'last_seen': ''}])
-                    u_df = pd.concat([u_df, new_u], ignore_index=True)
-                    save_csv(USERS_CSV_ID, u_df)
-                    st.rerun()
+                    if n_email and n_login:
+                        new_u = pd.DataFrame([{'email': n_email, 'login': n_login, 'password': n_pass, 'role': n_role, 'last_seen': ''}])
+                        u_df = pd.concat([u_df, new_u], ignore_index=True)
+                        save_csv(USERS_CSV_ID, u_df)
+                        st.success("Користувача додано!")
+                        st.rerun()
+                    else:
+                        st.warning("Заповніть Email та Логін")
 
     with t2:
         st.subheader("Зміна пароля")
-        target = st.selectbox("Оберіть користувача", u_df['email'].values)
-        new_pwd = st.text_input("Новий пароль", type="password")
-        if st.button("Оновити пароль"):
-            u_df.loc[u_df['email'] == target, 'password'] = new_pwd
-            save_csv(USERS_CSV_ID, u_df)
-            st.success("Пароль оновлено ✅")
+        if not u_df.empty:
+            target = st.selectbox("Оберіть користувача", u_df['email'].values)
+            new_pwd = st.text_input("Новий пароль", type="password")
+            if st.button("Оновити пароль"):
+                u_df.loc[u_df['email'] == target, 'password'] = new_pwd
+                save_csv(USERS_CSV_ID, u_df)
+                st.success("Пароль оновлено ✅")
 
     with t3:
         if role == "Супер Адмін":
             st.subheader("Керування базою замовлень")
-            if st.button("🗑️ Очистити базу (ПОТРІБНЕ ПІДТВЕРДЖЕННЯ)"):
-                st.warning("Напишіть 'ВИДАЛИТИ' в полі нижче")
-            confirm = st.text_input("Підтвердження")
-            if confirm == "ВИДАЛИТИ" and st.button("ПІДТВЕРДИТИ ВИДАЛЕННЯ"):
+            st.warning("⚠️ Будьте обережні з видаленням даних.")
+            confirm = st.text_input("Напишіть 'ВИДАЛИТИ' для підтвердження")
+            if st.button("Очистити базу") and confirm == "ВИДАЛИТИ":
+                # Створюємо порожню базу з правильними колонками
                 empty_df = pd.DataFrame(columns=['ID', 'Дата', 'Клієнт', 'Телефон', 'Місто', 'ТТН', 'Товари_JSON', 'Аванс', 'Готовність', 'Коментар'])
                 save_csv(ORDERS_CSV_ID, empty_df)
-                st.success("Базу очищено")
+                st.success("Базу очищено!")
+                st.rerun()
