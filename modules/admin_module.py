@@ -1,13 +1,17 @@
 import streamlit as st
 import pandas as pd
 import io
+from datetime import datetime
+from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 from modules.drawings import get_drive_service
 
 USERS_CSV_ID = "1qwPXMqIwDATgIsYHo7us6yQgE-JyhT7f"
+ORDERS_CSV_ID = "1Ws7rL1uyWcYbLeXsmqmaijt98Gxo6k3i"
 
-def load_users():
+def load_csv(file_id):
     service = get_drive_service()
-    request = service.files().get_media(fileId=USERS_CSV_ID)
+    if not service: return pd.DataFrame()
+    request = service.files().get_media(fileId=file_id)
     fh = io.BytesIO()
     downloader = MediaIoBaseDownload(fh, request)
     done = False
@@ -15,39 +19,53 @@ def load_users():
     fh.seek(0)
     return pd.read_csv(fh, dtype=str).fillna("")
 
-def save_users(df):
+def save_csv(file_id, df):
     service = get_drive_service()
+    if not service: return
     csv_data = df.to_csv(index=False).encode('utf-8')
-    from googleapiclient.http import MediaIoBaseUpload
-    media = MediaIoBaseUpload(io.BytesIO(csv_data), mimetype='text/csv')
-    service.files().update(fileId=USERS_CSV_ID, media_body=media).execute()
+    media_body = MediaIoBaseUpload(io.BytesIO(csv_data), mimetype='text/csv')
+    service.files().update(fileId=file_id, media_body=media_body).execute()
 
 def show_admin_panel():
     role = st.session_state.auth.get('role')
     st.header(f"🔐 Адмін-панель")
     
-    u_df = load_users()
+    u_df = load_csv(USERS_CSV_ID)
     
-    tab_list, tab_edit, tab_db = st.tabs(["👥 Користувачі", "🔑 Зміна паролів", "💾 База даних"])
+    t1, t2, t3 = st.tabs(["👥 Користувачі", "🔑 Паролі", "💾 База"])
 
-    with tab_list:
-        st.subheader("Активність користувачів")
+    with t1:
+        st.subheader("Список користувачів")
         st.dataframe(u_df[['email', 'login', 'role', 'last_seen']], use_container_width=True)
-
-    with tab_edit:
-        st.subheader("Встановити новий пароль")
-        target_user = st.selectbox("Виберіть користувача", u_df['email'].values, key="select_user_pwd")
-        new_pass = st.text_input("Новий пароль", type="password")
         
-        if st.button("Оновити пароль"):
-            if new_pass:
-                u_df.loc[u_df['email'] == target_user, 'password'] = new_pass
-                save_users(u_df)
-                st.success(f"✅ Пароль для {target_user} успішно змінено!")
-            else:
-                st.warning("Введіть пароль")
+        with st.expander("➕ Додати користувача"):
+            with st.form("add_user"):
+                n_email = st.text_input("Email")
+                n_login = st.text_input("Логін (короткий)")
+                n_pass = st.text_input("Пароль")
+                n_role = st.selectbox("Роль", ["Адмін", "Менеджер", "Виробництво"])
+                if st.form_submit_button("Зберегти"):
+                    new_u = pd.DataFrame([{'email': n_email, 'login': n_login, 'password': n_pass, 'role': n_role, 'last_seen': ''}])
+                    u_df = pd.concat([u_df, new_u], ignore_index=True)
+                    save_csv(USERS_CSV_ID, u_df)
+                    st.rerun()
 
-    with tab_db:
+    with t2:
+        st.subheader("Зміна пароля")
+        target = st.selectbox("Оберіть користувача", u_df['email'].values)
+        new_pwd = st.text_input("Новий пароль", type="password")
+        if st.button("Оновити пароль"):
+            u_df.loc[u_df['email'] == target, 'password'] = new_pwd
+            save_csv(USERS_CSV_ID, u_df)
+            st.success("Пароль оновлено ✅")
+
+    with t3:
         if role == "Супер Адмін":
-            st.warning("Тут доступні функції видалення та бекапу бази.")
-            # Логіка видалення бази, яку ми писали раніше...
+            st.subheader("Керування базою замовлень")
+            if st.button("🗑️ Очистити базу (ПОТРІБНЕ ПІДТВЕРДЖЕННЯ)"):
+                st.warning("Напишіть 'ВИДАЛИТИ' в полі нижче")
+            confirm = st.text_input("Підтвердження")
+            if confirm == "ВИДАЛИТИ" and st.button("ПІДТВЕРДИТИ ВИДАЛЕННЯ"):
+                empty_df = pd.DataFrame(columns=['ID', 'Дата', 'Клієнт', 'Телефон', 'Місто', 'ТТН', 'Товари_JSON', 'Аванс', 'Готовність', 'Коментар'])
+                save_csv(ORDERS_CSV_ID, empty_df)
+                st.success("Базу очищено")
