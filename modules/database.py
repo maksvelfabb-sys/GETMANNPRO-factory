@@ -46,4 +46,61 @@ def show_orders_page(role):
     search = st.text_input("🔍 Швидкий пошук (ID, Клієнт, Артикул)...").lower()
     
     # Створюємо копію для відображення (нові зверху)
-    df_v = df.copy().
+    df_v = df.copy().iloc[::-1]
+    
+    if search:
+        # Фільтрація по всіх полях
+        df_v = df_v[df_v.apply(lambda r: search in str(r.values).lower(), axis=1)]
+
+    # Вивід карток замовлень
+    for idx, row in df_v.iterrows():
+        with st.container(border=True):
+            col_info, col_status = st.columns([3, 1])
+            
+            order_id = row.get('ID', '???')
+            client = row.get('Клієнт', 'Невідомий')
+            
+            col_info.subheader(f"№{order_id} — {client}")
+            col_status.write(f"**Статус:** {row.get('Готовність', 'Не вказано')}")
+            
+            # Декодування списку товарів з JSON
+            try:
+                items = json.loads(row['Товари_JSON']) if row['Товари_JSON'] else []
+            except:
+                items = []
+            
+            # Рядки з товарами
+            for i, it in enumerate(items):
+                c_name, c_btn = st.columns([3, 1])
+                
+                name = it.get('назва', 'Товар без назви')
+                art = str(it.get('арт', '')).strip()
+                qty = it.get('к-ть', '1')
+                
+                c_name.write(f"🔹 {name} (**{art}**) — {qty} шт.")
+                
+                # Пошук посилання на креслення через модуль drawings.py
+                if art:
+                    link = get_pdf_link(art)
+                    if link:
+                        # Використовуємо наш надійний HTML-стиль кнопки зі styles.py
+                        btn_html = f'''
+                            <a href="{link}" target="_blank" class="pdf-button">
+                                📕 PDF
+                            </a>
+                        '''
+                        c_btn.markdown(btn_html, unsafe_allow_html=True)
+                    else:
+                        c_btn.button("⌛ Немає", disabled=True, key=f"none_{order_id}_{i}", use_container_width=True)
+                else:
+                    c_btn.button("⚪ Без арту", disabled=True, key=f"empty_{order_id}_{i}", use_container_width=True)
+
+            # Додаткова інформація внизу картки
+            st.divider()
+            c_bot1, c_bot2, c_bot3 = st.columns(3)
+            c_bot1.caption(f"📅 Дата: {row.get('Дата', '-')}")
+            c_bot2.caption(f"📞 Тел: {row.get('Телефон', '-')}")
+            c_bot3.caption(f"🚚 ТТН: {row.get('ТТН', '-')}")
+            
+            if row.get('Коментар'):
+                st.info(f"💬 {row['Коментар']}")
