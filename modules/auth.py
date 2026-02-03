@@ -2,8 +2,8 @@ import streamlit as st
 import pandas as pd
 import io
 from googleapiclient.http import MediaIoBaseDownload
-# Змінено: додано крапку для пошуку всередині цієї ж папки
-from .drawings import get_drive_service 
+# Абсолютний імпорт для стабільності
+from modules.drawings import get_drive_service 
 
 USERS_CSV_ID = "1qwPXMqIwDATgIsYHo7us6yQgE-JyhT7f"
 
@@ -14,12 +14,10 @@ def login_screen():
         pwd = st.text_input("Пароль", type="password").strip()
         
         if st.button("Увійти", use_container_width=True):
-            # Перевірка Супер Адміна (maksvel.fabb@gmail.com)
             if email == "maksvel.fabb@gmail.com" and pwd == "1234":
                 st.session_state.auth = {"email": email, "role": "Супер Адмін"}
                 st.rerun()
             
-            # Перевірка через CSV на Drive
             try:
                 service = get_drive_service()
                 request = service.files().get_media(fileId=USERS_CSV_ID)
@@ -34,7 +32,6 @@ def login_screen():
                 if not user.empty:
                     st.session_state.auth = user.iloc[0].to_dict()
                     st.rerun()
-                else:
-                    st.error("Невірний логін або пароль")
+                else: st.error("Невірний логін або пароль")
             except Exception as e:
-                st.error(f"Помилка бази користувачів: {e}")
+                st.error(f"Помилка бази: {e}")
