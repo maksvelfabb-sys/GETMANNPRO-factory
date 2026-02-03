@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from modules.database import load_data
+from .database import load_data 
 
 def show_admin_panel():
     st.header("👥 Керування системою")
