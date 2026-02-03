@@ -3,12 +3,13 @@ import sys
 import os
 from datetime import datetime
 
-# Системний шлях
+# Налаштування шляхів
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from modules.auth import login_screen
 from modules.styles import apply_custom_styles
 from modules.database import show_orders_page
+# Тепер назви функцій load_csv та save_csv точно збігаються
 from modules.admin_module import show_admin_panel, load_csv, save_csv, USERS_CSV_ID
 
 st.set_page_config(page_title="GETMANN ERP", layout="wide", page_icon="🏭")
@@ -21,32 +22,27 @@ if 'auth' not in st.session_state:
 user = st.session_state.auth
 role = user.get('role')
 
-# Оновлюємо статус "В мережі" при кожному кліку
-if st.session_state.get('auth'):
-    try:
-        u_df = load_csv(USERS_CSV_ID)
-        u_df.loc[u_df['email'] == user['email'], 'last_seen'] = datetime.now().strftime("%H:%M:%S")
-        # Щоб не перевантажувати Drive, можна зберігати раз на кілька хвилин, 
-        # але для початку зробимо пряме оновлення
+# Оновлення статусу активності
+try:
+    u_df = load_csv(USERS_CSV_ID)
+    if not u_df.empty:
+        u_df.loc[u_df['email'] == user['email'], 'last_seen'] = datetime.now().strftime("%H:%M")
         save_csv(USERS_CSV_ID, u_df)
-    except: pass
+except:
+    pass
 
-# --- Сайдбар з фільтрацією меню ---
+# Меню
 st.sidebar.title("🏭 GETMANN ERP")
-st.sidebar.write(f"👤 {user['email']}")
-
-menu_options = ["📋 Замовлення"]
-# Додаємо Адмін-панель тільки для Адмінів та Супер Адмінів
+menu_opts = ["📋 Замовлення"]
 if role in ["Адмін", "Супер Адмін"]:
-    menu_options.append("👥 Адмін-панель")
+    menu_opts.append("👥 Адмін-панель")
 
-menu = st.sidebar.radio("Навігація", menu_options)
+menu = st.sidebar.radio("Навігація", menu_opts)
 
 if st.sidebar.button("🚪 Вийти"):
     st.session_state.clear()
     st.rerun()
 
-# Відображення сторінок
 if menu == "📋 Замовлення":
     show_orders_page(role)
 elif menu == "👥 Адмін-панель":
