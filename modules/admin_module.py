@@ -1,9 +1,50 @@
 import streamlit as st
 import pandas as pd
-from .auth import USERS_CSV_ID # Або вкажіть ID вручну "1qwPXMqIwDATgIsYHo7us6yQgE-JyhT7f"
-from .admin_module_core import load_csv, save_csv # Переконайтеся, що імпорт вірний
+import io
+# Імпортуємо інструменти Google Drive (вони у вас в основному коді)
+# Якщо load_csv та save_csv вже є в цьому файлі — залиште їх. 
+# Якщо ні — переконайтеся, що шлях нижче вірний:
 
-# Ваші ID файлів
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
+from google.oauth2 import service_account
+
+# --- ТУТ ПОВИННІ БУТИ ВАШІ ФУНКЦІЇ load_csv ТА save_csv ---
+# (Я додаю їх сюди, щоб вони точно працювали)
+
+def load_csv(file_id):
+    try:
+        # Використовуємо секрети з st.secrets
+        creds = service_account.Credentials.from_service_account_info(st.secrets["gcp_service_account"])
+        service = build('drive', 'v3', credentials=creds)
+        request = service.files().get_media(fileId=file_id)
+        fh = io.BytesIO()
+        downloader = MediaIoBaseDownload(fh, request)
+        done = False
+        while done is False:
+            status, done = downloader.next_chunk()
+        fh.seek(0)
+        return pd.read_csv(fh)
+    except Exception as e:
+        st.error(f"Помилка завантаження: {e}")
+        return pd.DataFrame()
+
+def save_csv(file_id, df):
+    try:
+        creds = service_account.Credentials.from_service_account_info(st.secrets["gcp_service_account"])
+        service = build('drive', 'v3', credentials=creds)
+        csv_data = df.to_csv(index=False)
+        fh = io.BytesIO(csv_data.encode())
+        media = MediaFileUpload(fh, mimetype='text/csv', resumable=True)
+        service.files().update(fileId=file_id, media_body=media).execute()
+        return True
+    except Exception as e:
+        st.error(f"Помилка збереження: {e}")
+        return False
+
+# --- ДАЛІ ЙДЕ ВАША ПАНЕЛЬ КЕРУВАННЯ ---
+
+USERS_CSV_ID = "1qwPXMqIwDATgIsYHo7us6yQgE-JyhT7f"
 ORDERS_CSV_ID = "1Ws7rL1uyWcYbLeXsmqmaijt98Gxo6k3i"
 ITEMS_CSV_ID = "1knqbYIrK6q_hyj1wkrqOUzIIZfL_ils1"
 
