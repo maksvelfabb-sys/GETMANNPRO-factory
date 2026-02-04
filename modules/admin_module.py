@@ -41,14 +41,29 @@ def show_admin_panel():
                     
                     btn_save, btn_del = st.columns([1, 1])
                     
-                    if btn_save.form_submit_button("💾 Зберегти зміни"):
-                        df_users.at[idx, 'login'] = edit_login.strip()
-                        df_users.at[idx, 'email'] = edit_email.lower().strip()
-                        df_users.at[idx, 'password'] = str(edit_pass).strip()
-                        df_users.at[idx, 'role'] = edit_role
-                        save_csv(USERS_CSV_ID, df_users)
-                        st.success("Дані оновлено!")
-                        st.rerun()
+if btn_save.form_submit_button("💾 Зберегти зміни"):
+    # Створюємо новий рядок з оновленими даними
+    updated_row = {
+        'email': edit_email.lower().strip(),
+        'login': edit_login.strip(),
+        'password': str(edit_pass).strip(),
+        'role': edit_role,
+        'last_seen': row.get('last_seen', '-')
+    }
+    
+    # Оновлюємо DataFrame через фільтр по email (найнадійніший спосіб)
+    df_users.loc[df_users['email'] == row['email'], ['email', 'login', 'password', 'role']] = [
+        updated_row['email'], updated_row['login'], updated_row['password'], updated_row['role']
+    ]
+    
+    # Спроба збереження
+    success = save_csv(USERS_CSV_ID, df_users)
+    
+    if success:
+        st.success(f"Зміни для {edit_login} збережено в хмарі!")
+        st.rerun()
+    else:
+        st.error("Не вдалося відправити дані на Google Drive. Перевірте консоль.")
 
                     # Видалення (забороняємо видаляти самого себе)
                     if row['email'] != auth_data.get('email'):
