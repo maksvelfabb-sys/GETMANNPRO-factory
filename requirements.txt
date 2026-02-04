@@ -2,4 +2,5 @@ streamlit
 pandas
 google-api-python-client
 google-auth-httplib2
+streamlit-cookies-controller
 google-auth-oauthlib
