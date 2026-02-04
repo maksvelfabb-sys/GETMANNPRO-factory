@@ -5,7 +5,7 @@ from modules.admin_module import load_csv, save_csv
 
 # ID файлів на Google Drive
 ORDERS_HEADER_ID = "1Ws7rL1uyWcYbLeXsmqmaijt98Gxo6k3i" 
-ORDER_ITEMS_ID = "ВАШ_НОВИЙ_ID_ДЛЯ_ТОВАРІВ" # <--- ВСТАВТЕ ID ТУТ
+ORDER_ITEMS_ID = "1knqbYIrK6q_hyj1wkrqOUzIIZfL_ils1"
 
 def get_next_order_id():
     """Рахує наступний вільний ID замовлення"""
