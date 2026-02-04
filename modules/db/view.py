@@ -14,8 +14,8 @@ def get_status_class(status):
     return mapping.get(status, "")
 
 def show_order_cards():
+    # ВИПРАВЛЕНО: Прибрали імпорт, просто викликаємо функцію нижче
     if 'editing_id' in st.session_state and st.session_state.editing_id:
-        from .view import show_edit_form # Щоб уникнути циклічного імпорту
         show_edit_form(st.session_state.editing_id)
         return
 
@@ -26,10 +26,10 @@ def show_order_cards():
         st.info("Журнал замовлень порожній.")
         return
 
-    # --- ФІЛЬТРИ (тепер в один рядок для економії місця) ---
+    # --- ПАНЕЛЬ ФІЛЬТРІВ (Компактна) ---
     c1, c2, c3 = st.columns([2, 1, 1])
     f_search = c1.text_input("🔍 Пошук", placeholder="Клієнт, ID, ТТН...")
-    f_manager = c2.selectbox("👤 Менеджер", ["Всі"] + sorted(list(df_h['Менеджер'].unique())))
+    f_manager = c2.selectbox("👤 Менеджер", ["Всі"] + sorted(list(df_h['Менеджер'].unique()) if 'Менеджер' in df_h.columns else []))
     f_view = c3.radio("Вигляд", ["🗂️", "📊"], horizontal=True)
 
     view_df = df_h.copy()
@@ -44,40 +44,67 @@ def show_order_cards():
         for _, row in view_df.iterrows():
             status_class = get_status_class(row['Готовність'])
             
-            # Початок контейнера картки з кольоровою міткою
             with st.container():
-                st.markdown(f'<div class="{status_class}" style="padding: 10px; border-radius: 5px; margin-bottom: 5px; border: 1px solid #ddd;">', unsafe_allow_html=True)
+                # Картка з кольоровою лінією зліва
+                st.markdown(f'<div class="{status_class}" style="padding: 10px; border-radius: 5px; margin-bottom: 8px; border: 1px solid #ddd; border-left-width: 8px !important;">', unsafe_allow_html=True)
                 
-                # Рядок 1: ID, Клієнт, Дата
-                col_title, col_status = st.columns([4, 1])
-                col_title.markdown(f'<span class="card-id">№{row["ID"]} — {row["Клієнт"]}</span>', unsafe_allow_html=True)
+                col_title, col_edit, col_status = st.columns([4, 0.5, 1])
                 
-                # Кнопка статусу (зменшена)
-                with col_status.popover("⚙️"):
-                    new_st = st.selectbox("Статус", ["В черзі", "В роботі", "Готово", "Відправлено"], 
-                                        index=["В черзі", "В роботі", "Готово", "Відправлено"].index(row['Готовність']),
-                                        key=f"st_change_{row['ID']}")
-                    if st.button("Зберегти", key=f"btn_st_{row['ID']}"):
-                        update_order_header(row['ID'], {'Готовність': new_st})
-                        st.rerun()
-
-                # Рядок 2: Інфо та кнопка редагування
-                inf1, inf2, inf3 = st.columns([3, 2, 1])
-                inf1.markdown(f'<div class="card-info">📍 {row.get("Місто", "")} | 📱 {row["Телефон"]}</div>', unsafe_allow_html=True)
-                inf2.markdown(f'<div class="card-info">👤 {row["Менеджер"]} | 📅 {row["Дата"]}</div>', unsafe_allow_html=True)
+                col_title.markdown(f'<span style="font-size:1.1rem; font-weight:bold;">№{row["ID"]} — {row["Клієнт"]}</span>', unsafe_allow_html=True)
                 
-                if inf3.button("📝", key=f"edit_{row['ID']}", help="Редагувати замовлення"):
+                # Кнопка редагування (олівець)
+                if col_edit.button("📝", key=f"ed_{row['ID']}"):
                     st.session_state.editing_id = row['ID']
                     st.rerun()
 
-                # Компактний список товарів (лише якщо розгорнуто)
-                with st.expander("📦 Товари"):
+                # Зміна статусу
+                with col_status.popover(f"⚙️ {row['Готовність']}"):
+                    new_st = st.selectbox("Змінити статус", ["В черзі", "В роботі", "Готово", "Відправлено"], 
+                                        index=["В черзі", "В роботі", "Готово", "Відправлено"].index(row['Готовність']),
+                                        key=f"pop_st_{row['ID']}")
+                    if st.button("Оновити", key=f"pop_btn_{row['ID']}"):
+                        update_order_header(row['ID'], {'Готовність': new_st})
+                        st.rerun()
+
+                # Інфо рядок
+                st.markdown(f'<div style="font-size:0.85rem; color:#555;">📍 {row.get("Місто", "")} | 📱 {row["Телефон"]} | 👤 {row["Менеджер"]}</div>', unsafe_allow_html=True)
+
+                # Товари (згорнуто для економії місця)
+                with st.expander("📦 Список товарів"):
                     items = df_i[df_i['order_id'] == str(row['ID'])]
-                    for _, it in items.iterrows():
-                        it_c1, it_c2 = st.columns([4, 1])
-                        it_c1.write(f"• {it['назва']} ({it['арт']}) x{it['к-ть']}")
-                        link = get_pdf_link(it['art'] if 'art' in it else it.get('арт'))
-                        if link:
-                            it_c2.markdown(f'<a href="{link}" target="_blank" class="pdf-button">PDF</a>', unsafe_allow_html=True)
+                    if not items.empty:
+                        for _, it in items.iterrows():
+                            it_c1, it_c2 = st.columns([4, 1])
+                            it_c1.write(f"• {it['назва']} ({it['арт']}) x{it['к-ть']}")
+                            link = get_pdf_link(it['арт'])
+                            if link:
+                                it_c2.markdown(f'<a href="{link}" target="_blank" class="pdf-button">PDF</a>', unsafe_allow_html=True)
                 
-                st.markdown('</div>', unsafe_allow_html=True) # Закриваємо div картки
+                st.markdown('</div>', unsafe_allow_html=True)
+
+def show_edit_form(order_id):
+    """Функція для редагування замовлення"""
+    st.button("⬅️ Назад", on_click=lambda: st.session_state.update({"editing_id": None}))
+    st.header(f"📝 Редагування №{order_id}")
+
+    df_h = load_csv(ORDERS_HEADER_ID)
+    df_i = load_csv(ORDER_ITEMS_ID)
+    
+    order_row = df_h[df_h['ID'] == str(order_id)].iloc[0]
+    
+    with st.container(border=True):
+        c1, c2 = st.columns(2)
+        u_client = c1.text_input("Клієнт", value=order_row['Клієнт'])
+        u_phone = c2.text_input("Телефон", value=order_row['Телефон'])
+        u_city = c1.text_input("Місто", value=order_row.get('Місто', ''))
+        u_ttn = c2.text_input("ТТН", value=order_row.get('ТТН', ''))
+        u_status = st.selectbox("Статус", ["В черзі", "В роботі", "Готово", "Відправлено"], 
+                               index=["В черзі", "В роботі", "Готово", "Відправлено"].index(order_row['Готовність']))
+
+    if st.button("💾 ЗБЕРЕГТИ ЗМІНИ", type="primary"):
+        update_order_header(order_id, {
+            'Клієнт': u_client, 'Телефон': u_phone, 
+            'Місто': u_city, 'ТТН': u_ttn, 'Готовність': u_status
+        })
+        st.session_state.editing_id = None
+        st.rerun()
