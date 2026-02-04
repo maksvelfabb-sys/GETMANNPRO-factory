@@ -38,17 +38,32 @@ def load_csv(file_id):
         return pd.DataFrame()
 
 def save_csv(file_id, df):
-    """Зберігає Pandas DataFrame у CSV файл на Google Drive"""
     try:
         service = get_drive_service()
-        if not service: return False
-        
+        if not service: 
+            st.error("Сервіс Drive не доступний")
+            return False
+            
+        # Конвертуємо все в CSV
         csv_data = df.to_csv(index=False)
-        fh = io.BytesIO(csv_data.encode())
+        fh = io.BytesIO(csv_data.encode('utf-8'))
+        
+        # Використовуємо правильний медіа-тип
         media = MediaFileUpload(fh, mimetype='text/csv', resumable=True)
-        service.files().update(fileId=file_id, media_body=media).execute()
-        return True
-    except Exception as e:
-        st.error(f"Помилка збереження файлу {file_id}: {e}")
+        
+        # Оновлюємо файл
+        updated_file = service.files().update(
+            fileId=file_id, 
+            media_body=media,
+            fields='id' # Запитуємо ID назад як підтвердження
+        ).execute()
+        
+        if updated_file.get('id'):
+            return True
         return False
+    except Exception as e:
+        st.error(f"Помилка фізичного запису на Диск: {e}")
+        return False
+
+
         
