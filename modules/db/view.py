@@ -83,28 +83,53 @@ def show_order_cards():
                 st.markdown('</div>', unsafe_allow_html=True)
 
 def show_edit_form(order_id):
-    """Функція для редагування замовлення"""
+    """Функція для редагування замовлення з перевіркою наявності даних"""
     st.button("⬅️ Назад", on_click=lambda: st.session_state.update({"editing_id": None}))
+    
+    df_h = load_csv(ORDERS_HEADER_ID)
+    
+    # БЕЗПЕЧНИЙ ПОШУК: перевіряємо і рядки, і числа
+    mask = (df_h['ID'].astype(str) == str(order_id))
+    results = df_h[mask]
+    
+    if results.empty:
+        st.error(f"Помилка: Замовлення №{order_id} не знайдено в базі даних.")
+        if st.button("Спробувати оновити базу"):
+            st.rerun()
+        return
+
+    # Тепер безпечно беремо перший рядок
+    order_row = results.iloc[0]
     st.header(f"📝 Редагування №{order_id}")
 
-    df_h = load_csv(ORDERS_HEADER_ID)
     df_i = load_csv(ORDER_ITEMS_ID)
     
-    order_row = df_h[df_h['ID'] == str(order_id)].iloc[0]
-    
+    # --- ДАЛІ ВАШ КОД ФОРМИ РЕДАГУВАННЯ ---
     with st.container(border=True):
         c1, c2 = st.columns(2)
-        u_client = c1.text_input("Клієнт", value=order_row['Клієнт'])
-        u_phone = c2.text_input("Телефон", value=order_row['Телефон'])
-        u_city = c1.text_input("Місто", value=order_row.get('Місто', ''))
-        u_ttn = c2.text_input("ТТН", value=order_row.get('ТТН', ''))
-        u_status = st.selectbox("Статус", ["В черзі", "В роботі", "Готово", "Відправлено"], 
-                               index=["В черзі", "В роботі", "Готово", "Відправлено"].index(order_row['Готовність']))
+        u_client = c1.text_input("Клієнт", value=str(order_row.get('Клієнт', '')))
+        u_phone = c2.text_input("Телефон", value=str(order_row.get('Телефон', '')))
+        u_city = c1.text_input("Місто", value=str(order_row.get('Місто', '')))
+        u_ttn = c2.text_input("ТТН", value=str(order_row.get('ТТН', '')))
+        
+        # Безпечний пошук індексу для статусу
+        statuses = ["В черзі", "В роботі", "Готово", "Відправлено"]
+        current_status = order_row.get('Готовність', 'В черзі')
+        try:
+            st_idx = statuses.index(current_status)
+        except ValueError:
+            st_idx = 0
+            
+        u_status = st.selectbox("Статус", statuses, index=st_idx)
 
     if st.button("💾 ЗБЕРЕГТИ ЗМІНИ", type="primary"):
         update_order_header(order_id, {
-            'Клієнт': u_client, 'Телефон': u_phone, 
-            'Місто': u_city, 'ТТН': u_ttn, 'Готовність': u_status
+            'Клієнт': u_client, 
+            'Телефон': u_phone, 
+            'Місто': u_city, 
+            'ТТН': u_ttn, 
+            'Готовність': u_status
         })
         st.session_state.editing_id = None
+        st.success("Дані оновлено!")
         st.rerun()
