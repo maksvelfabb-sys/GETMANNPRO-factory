@@ -1,6 +1,6 @@
 import streamlit as st
-from streamlit_cookies_controller import CookieController
-from modules.admin_module import load_csv
+from modules.config import USERS_CSV_ID
+from modules.drive_tools import load_csv
 
 controller = CookieController()
 USERS_CSV_ID = "1qwPXMqIwDATgIsYHo7us6yQgE-JyhT7f"
