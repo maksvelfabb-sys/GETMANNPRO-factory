@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
-from .auth import USERS_CSV_ID
-from .admin_module_core import load_csv, save_csv
+from modules.config import USERS_CSV_ID, ORDERS_CSV_ID, ITEMS_CSV_ID
+from modules.drive_tools import load_csv, save_csv
 
 # ID баз даних
 ORDERS_CSV_ID = "1Ws7rL1uyWcYbLeXsmqmaijt98Gxo6k3i"
