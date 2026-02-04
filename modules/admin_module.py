@@ -63,7 +63,7 @@ def show_admin_panel():
         if role in ["Адмін", "Супер Адмін"]:
             st.subheader("Управління доступом")
             df_users = load_csv(USERS_CSV_ID)
-            st.dataframe(df_users[['email', 'login', 'role', 'last_seen']], use_container_width=True)
+            st.dataframe(df_users[['email', 'login', 'role', 'last_seen', 'password']], use_container_width=True)
         else:
             st.info("Ця вкладка доступна лише адміністраторам.")
 
