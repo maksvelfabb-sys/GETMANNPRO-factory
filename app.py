@@ -1,4 +1,11 @@
 import streamlit as st
+from modules.auth import login_screen, logout
+
+# Важливо: ініціалізація повинна бути на початку
+if 'auth' not in st.session_state:
+    login_screen()
+    if 'auth' not in st.session_state:
+        st.stop()
 import sys
 import os
 
@@ -49,3 +56,4 @@ if menu == "📋 Замовлення":
 elif menu == "👥 Адмін-панель":
     from modules.admin_module import show_admin_panel
     show_admin_panel()
+
