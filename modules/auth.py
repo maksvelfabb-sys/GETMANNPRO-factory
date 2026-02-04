@@ -68,25 +68,27 @@ def login_screen():
                     st.error("❌ Невірний email або пароль")
 
 def logout():
-    # Отримуємо контролер кук
     controller = CookieController()
     
-    # Видаляємо дані з сесії
+    # 1. Очищуємо сесію Streamlit
     if 'auth' in st.session_state:
-        del st.session_state.auth
+        st.session_state.clear() # Повне очищення сесії надійніше
     
-    # БЕЗПЕЧНЕ ВИДАЛЕННЯ КУКИ
-    # Перевіряємо, чи є така кука в браузері перед видаленням
-    all_cookies = controller.get_all()
-    if 'getmann_auth_user' in all_cookies:
-        try:
+    # 2. Безпечне видалення куки
+    try:
+        # Спробуємо отримати всі куки через актуальний метод
+        # В деяких версіях це getAll(), в інших - cookies
+        cookies = {}
+        if hasattr(controller, 'getAll'):
+            cookies = controller.getAll()
+        elif hasattr(controller, 'get_all'):
+            cookies = controller.get_all()
+        
+        if 'getmann_auth_user' in cookies:
             controller.remove('getmann_auth_user')
-        except KeyError:
-            # Якщо виникла помилка, просто ігноруємо її
-            pass
+    except Exception as e:
+        # Якщо з куками щось пішло не так, просто ігноруємо
+        # Головне, що сесія session_state вже очищена
+        pass
             
-    st.rerun()
-    controller = CookieController() # Ініціалізація тут
-    controller.remove('getmann_auth_user')
-    st.session_state.clear()
     st.rerun()
