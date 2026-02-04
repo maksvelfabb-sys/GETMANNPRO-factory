@@ -1,85 +1,74 @@
 import streamlit as st
 import pandas as pd
-import io
-from datetime import datetime
-from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
-from modules.drawings import get_drive_service
+from .auth import USERS_CSV_ID # Або вкажіть ID вручну "1qwPXMqIwDATgIsYHo7us6yQgE-JyhT7f"
+from .admin_module_core import load_csv, save_csv # Переконайтеся, що імпорт вірний
 
-USERS_CSV_ID = "1qwPXMqIwDATgIsYHo7us6yQgE-JyhT7f"
+# Ваші ID файлів
 ORDERS_CSV_ID = "1Ws7rL1uyWcYbLeXsmqmaijt98Gxo6k3i"
-
-def load_csv(file_id):
-    service = get_drive_service()
-    if not service: return pd.DataFrame()
-    try:
-        request = service.files().get_media(fileId=file_id)
-        fh = io.BytesIO()
-        downloader = MediaIoBaseDownload(fh, request)
-        done = False
-        while not done: _, done = downloader.next_chunk()
-        fh.seek(0)
-        df = pd.read_csv(fh, dtype=str).fillna("")
-        
-        # Автоматичне виправлення структури, якщо колонок немає
-        required_cols = ['email', 'login', 'password', 'role', 'last_seen']
-        if file_id == USERS_CSV_ID:
-            changed = False
-            for col in required_cols:
-                if col not in df.columns:
-                    df[col] = ""
-                    changed = True
-            if changed: # Зберігаємо виправлену структуру назад на Drive
-                save_csv(file_id, df)
-        return df
-    except Exception as e:
-        st.error(f"Помилка читання CSV: {e}")
-        return pd.DataFrame()
-
-def save_csv(file_id, df):
-    service = get_drive_service()
-    if not service: return
-    csv_data = df.to_csv(index=False).encode('utf-8')
-    media_body = MediaIoBaseUpload(io.BytesIO(csv_data), mimetype='text/csv')
-    service.files().update(fileId=file_id, media_body=media_body).execute()
+ITEMS_CSV_ID = "1knqbYIrK6q_hyj1wkrqOUzIIZfL_ils1"
 
 def show_admin_panel():
-    role = st.session_state.auth.get('role')
-    st.header(f"🔐 Адмін-панель")
-    
-    u_df = load_csv(USERS_CSV_ID)
-    
-    # Створюємо вкладки ТУТ
-    t1, t2, t3 = st.tabs(["👥 Користувачі", "🔑 Паролі", "💾 База"])
+    auth_data = st.session_state.get('auth', {})
+    role = auth_data.get('role')
+    current_user_email = auth_data.get('email')
 
+    st.header("🔐 Панель керування")
+
+    # Створюємо вкладки
+    t1, t2, t3 = st.tabs(["👥 Користувачі", "🔑 Зміна пароля", "⚙️ База даних"])
+
+    # --- ВКЛАДКА 1: СПИСОК КОРИСТУВАЧІВ (Тільки для Адмінів) ---
     with t1:
-        st.subheader("Список користувачів")
-        # ... ваш код керування користувачами ...
-
-    with t2:
-        st.subheader("Зміна пароля")
-        # ... ваш код зміни пароля ...
-
-    with t3:
-        # ТЕПЕР t3 доступна, бо ми всередині функції
         if role in ["Адмін", "Супер Адмін"]:
-            st.subheader("💾 Керування базою замовлень")
-            st.warning("⚠️ Очищення видалить ВСІ замовлення та товари!")
+            st.subheader("Управління доступом")
+            df_users = load_csv(USERS_CSV_ID)
+            st.dataframe(df_users[['email', 'login', 'role', 'last_seen']], use_container_width=True)
+        else:
+            st.info("Ця вкладка доступна лише адміністраторам.")
+
+    # --- ВКЛАДКА 2: ЗМІНА ПАРОЛЯ ---
+    with t2:
+        st.subheader("Оновлення безпеки")
+        df_users = load_csv(USERS_CSV_ID)
+
+        if role in ["Адмін", "Супер Адмін"]:
+            # Адмін може вибрати будь-якого юзера
+            target_user = st.selectbox("Виберіть користувача", df_users['email'].tolist())
+        else:
+            # Звичайний юзер бачить тільки себе
+            target_user = current_user_email
+            st.write(f"Зміна пароля для: **{target_user}**")
+
+        new_pass = st.text_input("Новий пароль", type="password")
+        if st.button("Оновити пароль"):
+            if new_pass:
+                df_users.loc[df_users['email'] == target_user, 'password'] = new_pass
+                save_csv(USERS_CSV_ID, df_users)
+                st.success(f"Пароль для {target_user} успішно змінено!")
+            else:
+                st.error("Пароль не може бути порожнім")
+
+    # --- ВКЛАДКА 3: ОЧИЩЕННЯ БАЗИ (Тільки для Адмінів) ---
+    with t3:
+        if role in ["Адмін", "Супер Адмін"]:
+            st.subheader("Небезпечна зона")
+            st.error("⚠️ Видалення бази замовлень та товарів неможливо скасувати!")
             
-            confirm = st.text_input("Напишіть 'ВИДАЛИТИ' для підтвердження", key="db_clear_confirm")
+            confirm = st.text_input("Введіть 'ВИДАЛИТИ' для підтвердження", key="confirm_clear")
             
-            if st.button("🔥 Очистити повну базу") and confirm == "ВИДАЛИТИ":
-                # Очищення основного файлу замовлень
-                empty_headers = pd.DataFrame(columns=[
-                    'ID', 'Дата', 'Менеджер', 'Клієнт', 'Телефон', 'Місто', 'ТТН', 'Сума', 'Готовність', 'Коментар'
-                ])
-                save_csv(ORDERS_CSV_ID, empty_headers)
-                
-                # Очищення файлу товарів
-                items_id = "1knqbYIrK6q_hyj1wkrqOUzIIZfL_ils1"
-                empty_items = pd.DataFrame(columns=[
-                    'order_id', 'назва', 'арт', 'ціна', 'к-ть', 'сума'
-                ])
-                save_csv(items_id, empty_items)
-                
-                st.success("Бази повністю очищені!")
-                st.rerun()
+            if st.button("🔥 ОЧИСТИТИ ВСІ ЗАМОВЛЕННЯ"):
+                if confirm == "ВИДАЛИТИ":
+                    # Очищення Headers
+                    empty_h = pd.DataFrame(columns=['ID', 'Дата', 'Менеджер', 'Клієнт', 'Телефон', 'Місто', 'ТТН', 'Сума', 'Готовність', 'Коментар'])
+                    save_csv(ORDERS_CSV_ID, empty_h)
+                    
+                    # Очищення Items
+                    empty_i = pd.DataFrame(columns=['order_id', 'назва', 'арт', 'ціна', 'к-ть', 'сума'])
+                    save_csv(ITEMS_CSV_ID, empty_i)
+                    
+                    st.success("Бази успішно очищені!")
+                    st.rerun()
+                else:
+                    st.warning("Підтвердження невірне")
+        else:
+            st.info("Доступ обмежено.")
