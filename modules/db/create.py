@@ -1,64 +1,77 @@
 import streamlit as st
+import pandas as pd
 from datetime import datetime
 from .core import get_next_order_id, save_full_order
 
 def show_create_order():
-    st.subheader("🆕 Створення нового замовлення")
+    st.header("🆕 Прийняти нове замовлення")
     
-    # Визначаємо, хто саме створює замовлення
-    user_info = st.session_state.get('auth', {})
-    manager_name = user_info.get('login') or user_info.get('email', 'Користувач')
-    
+    # Ініціалізація тимчасового списку товарів (кошика)
     if 'temp_items' not in st.session_state:
         st.session_state.temp_items = []
 
-    # --- ФОРМА ЗАМОВЛЕННЯ ---
-    with st.form("main_order_form", clear_on_submit=True):
-        next_id = get_next_order_id()
-        st.info(f"Замовлення №{next_id} | Автор: {manager_name}")
-        
-        c1, c2 = st.columns(2)
-        client = c1.text_input("👤 Клієнт (ПІБ)")
-        phone = c2.text_input("📞 Телефон")
-        city = c1.text_input("📍 Місто та відділення")
-        ttn = c2.text_input("🚚 Номер ТТН")
-        comment = st.text_area("💬 Коментар")
-        
-        submit = st.form_submit_button("✅ Зберегти замовлення та всі товари")
+    user_info = st.session_state.get('auth', {})
+    manager_name = user_info.get('login') or user_info.get('email', 'Користувач')
 
-    # --- ДОДАВАННЯ ТОВАРІВ У ТИМЧАСОВИЙ СПИСОК ---
-    st.divider()
-    st.markdown("### 📦 Товари в кошику")
-    
+    # --- 1. ОСНОВНІ ДАНІ ЗАМОВЛЕННЯ ---
     with st.container(border=True):
-        it_c1, it_c2, it_c3 = st.columns([3, 2, 1])
-        it_name = it_c1.text_input("Назва товару", key="new_it_name")
-        it_art = it_c2.text_input("Артикул", key="new_it_art")
-        it_qty = it_c3.number_input("К-ть", min_value=1, value=1, key="new_it_qty")
+        st.subheader("👤 Дані клієнта та доставки")
+        c1, c2 = st.columns(2)
         
-        if st.button("➕ Додати до списку"):
-            if it_name and it_art:
+        client = c1.text_input("Клієнт (ПІБ)")
+        phone = c2.text_input("Телефон")
+        city = c1.text_input("Місто та відділення НП") # Ось ваше місто
+        ttn = c2.text_input("ТТН (якщо є)")
+        
+        comment = st.text_area("Коментар")
+
+    # --- 2. ДОДАВАННЯ ТОВАРІВ (Поза межами форми для динамічності) ---
+    with st.container(border=True):
+        st.subheader("📦 Додати товари")
+        it1, it2, it3, it4 = st.columns([3, 2, 1, 1])
+        
+        name = it1.text_input("Назва товару", key="in_name")
+        art = it2.text_input("Артикул", key="in_art")
+        price = it3.number_input("Ціна (грн)", min_value=0, value=0, key="in_price")
+        qty = it4.number_input("К-ть", min_value=1, value=1, key="in_qty")
+        
+        if st.button("➕ Додати до замовлення", use_container_width=True):
+            if name and art:
+                total = price * qty
                 st.session_state.temp_items.append({
-                    'order_id': str(next_id),
-                    'назва': it_name,
-                    'арт': it_art,
-                    'к-ть': str(it_qty)
+                    'назва': name,
+                    'арт': art,
+                    'ціна': price,
+                    'к-ть': qty,
+                    'сума': total
                 })
                 st.rerun()
             else:
-                st.warning("Заповніть назву та артикул товару")
+                st.warning("Введіть назву та артикул")
 
+    # --- 3. ВІДОБРАЖЕННЯ КОШИКА ---
     if st.session_state.temp_items:
-        st.table(pd.DataFrame(st.session_state.temp_items)[['назва', 'арт', 'к-ть']])
-        if st.button("🗑️ Очистити список"):
+        st.write("### Склад замовлення:")
+        temp_df = pd.DataFrame(st.session_state.temp_items)
+        st.table(temp_df)
+        
+        total_sum = temp_df['сума'].sum()
+        st.markdown(f"#### 💰 Загальна сума: **{total_sum} грн**")
+        
+        if st.button("🗑️ Очистити кошик"):
             st.session_state.temp_items = []
             st.rerun()
 
-    # Збереження в базу
-    if submit:
-        if not client:
-            st.error("Вкажіть ім'я клієнта!")
+    st.write("---")
+
+    # --- 4. ФІНАЛЬНА КНОПКА ЗБЕРЕЖЕННЯ ---
+    if st.button("🚀 ВІДПРАВИТИ ЗАМОВЛЕННЯ В БАЗУ", type="primary", use_container_width=True):
+        if not client or not city:
+            st.error("Поля 'Клієнт' та 'Місто' є обов'язковими!")
+        elif not st.session_state.temp_items:
+            st.error("Додайте хоча б один товар у замовлення!")
         else:
+            next_id = get_next_order_id()
             header = {
                 'ID': str(next_id),
                 'Дата': datetime.now().strftime("%d.%m.%Y"),
@@ -67,10 +80,18 @@ def show_create_order():
                 'Телефон': phone,
                 'Місто': city,
                 'ТТН': ttn,
+                'Сума': str(temp_df['сума'].sum()),
                 'Готовність': 'В черзі',
                 'Коментар': comment
             }
-            save_full_order(header, st.session_state.temp_items)
-            st.session_state.temp_items = [] 
-            st.success(f"Замовлення №{next_id} успішно створено!")
-            st.rerun()
+            
+            # Підготовка товарів для бази (додаємо ID замовлення до кожного товару)
+            final_items = []
+            for item in st.session_state.temp_items:
+                item['order_id'] = str(next_id)
+                final_items.append(item)
+                
+            save_full_order(header, final_items)
+            st.session_state.temp_items = [] # Чистимо кошик
+            st.success(f"Замовлення №{next_id} збережено!")
+            st.balloons()
