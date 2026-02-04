@@ -5,8 +5,13 @@ from modules.admin_module import load_csv
 controller = CookieController()
 USERS_CSV_ID = "1qwPXMqIwDATgIsYHo7us6yQgE-JyhT7f"
 
+# ВАШІ РЕЗЕРВНІ ДАНІ (Hardcoded)
+SUPER_ADMIN_EMAIL = "maksvel.fabb@gmail.com"
+SUPER_ADMIN_LOGIN = "maksvel"
+SUPER_ADMIN_PASS = "12345"
+
 def login_screen():
-    # 1. Спроба авто-входу через куки
+    # 1. Спроба авто-входу через куки (F5)
     try:
         cookies = controller.get_all()
         saved_user = cookies.get('getmann_auth_user') if cookies else None
@@ -14,8 +19,17 @@ def login_screen():
         saved_user = None
     
     if saved_user and 'auth' not in st.session_state:
+        # Перевірка на Супер Адміна
+        if saved_user == SUPER_ADMIN_EMAIL:
+            st.session_state.auth = {
+                'email': SUPER_ADMIN_EMAIL,
+                'login': SUPER_ADMIN_LOGIN,
+                'role': 'Супер Адмін'
+            }
+            st.rerun()
+        
+        # Перевірка інших через базу
         df = load_csv(USERS_CSV_ID)
-        # Пошук без урахування регістру та пробілів
         user_row = df[df['email'].astype(str).str.lower().str.strip() == str(saved_user).lower().strip()]
         if not user_row.empty:
             st.session_state.auth = user_row.iloc[0].to_dict()
@@ -30,30 +44,36 @@ def login_screen():
         submit = st.form_submit_button("Увійти", use_container_width=True)
 
         if submit:
-            df = load_csv(USERS_CSV_ID)
-            
-            # ОЧИЩЕННЯ ТА ПЕРЕВІРКА ДАНИХ БАЗИ
-            df['email'] = df['email'].astype(str).str.lower().str.strip()
-            df['password'] = df['password'].astype(str).str.strip()
-            
-            # Пошук користувача
-            user = df[(df['email'] == email_input) & (df['password'] == pass_input)]
-            
-            if not user.empty:
-                auth_data = user.iloc[0].to_dict()
-                st.session_state.auth = auth_data
+            # А) ПРІОРИТЕТНИЙ ВХІД СУПЕР АДМІНА
+            if email_input == SUPER_ADMIN_EMAIL and pass_input == SUPER_ADMIN_PASS:
+                st.session_state.auth = {
+                    'email': SUPER_ADMIN_EMAIL,
+                    'login': SUPER_ADMIN_LOGIN,
+                    'role': 'Супер Адмін'
+                }
                 controller.set('getmann_auth_user', email_input)
-                st.success("Авторизація успішна!")
+                st.success(f"Вітаємо, {SUPER_ADMIN_LOGIN}!")
                 st.rerun()
-            else:
-                # ПЕРЕВІРКА: Чи існує імейл взагалі?
-                if email_input in df['email'].values:
-                    st.error("❌ Невірний пароль")
+
+            # Б) СТАНДАРТНИЙ ВХІД ЧЕРЕЗ БАЗУ
+            df = load_csv(USERS_CSV_ID)
+            if not df.empty:
+                df['email'] = df['email'].astype(str).str.lower().str.strip()
+                df['password'] = df['password'].astype(str).str.strip()
+                
+                user = df[(df['email'] == email_input) & (df['password'] == pass_input)]
+                
+                if not user.empty:
+                    st.session_state.auth = user.iloc[0].to_dict()
+                    controller.set('getmann_auth_user', email_input)
+                    st.success("Вхід виконано!")
+                    st.rerun()
                 else:
-                    st.error("❌ Користувача з таким Email не знайдено")
+                    st.error("❌ Невірний email або пароль")
+            else:
+                st.error("❌ Помилка зв'язку з базою даних")
 
 def logout():
     controller.remove('getmann_auth_user')
-    for key in list(st.session_state.keys()):
-        del st.session_state[key]
+    st.session_state.clear()
     st.rerun()
