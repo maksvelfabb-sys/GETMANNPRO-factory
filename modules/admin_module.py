@@ -1,105 +1,124 @@
 import streamlit as st
 import pandas as pd
-from modules.drive_tools import load_csv, save_csv, USERS_CSV_ID
+# Імпортуємо тільки з drive_tools, щоб розірвати коло імпортів
+from modules.drive_tools import load_csv, save_csv, USERS_CSV_ID, ORDERS_CSV_ID, ITEMS_CSV_ID
 
 def show_admin_panel():
     auth_data = st.session_state.get('auth', {})
     user_role = auth_data.get('role')
-    
+    current_user_email = auth_data.get('email')
+
     # Доступ лише для Адмінів та Супер Адмінів
     if user_role not in ["Адмін", "Супер Адмін"]:
-        st.error("У вас немає прав для перегляду цієї сторінки.")
+        st.error("⛔ У вас немає прав для доступу до цього розділу.")
         return
 
-    st.title("👥 Керування персоналом")
+    st.title("🛡️ Адмін-панель керування")
 
-    df_users = load_csv(USERS_CSV_ID)
-    if df_users.empty:
-        st.warning("База користувачів порожня або не завантажена.")
-        return
+    # Створюємо вкладки для різних функцій
+    tab_users, tab_db = st.tabs(["👥 Користувачі", "⚙️ Керування базою"])
 
-    # Вкладки: Список та Додавання
-    tab_list, tab_add = st.tabs(["📋 Список користувачів", "➕ Додати нового"])
-
-    # --- ВКЛАДКА: СПИСОК ТА РЕДАГУВАННЯ ---
-    with tab_list:
-        st.subheader("Активні співробітники")
+    # --- ВКЛАДКА 1: КЕРУВАННЯ КОРИСТУВАЧАМИ ---
+    with tab_users:
+        df_users = load_csv(USERS_CSV_ID)
         
-        for idx, row in df_users.iterrows():
-            with st.expander(f"👤 {row['login']} ({row['role']})"):
-                # Форма редагування для кожного користувача
-                with st.form(key=f"edit_user_{idx}"):
-                    col1, col2 = st.columns(2)
-                    edit_login = col1.text_input("Логін (Ім'я)", value=str(row['login']))
-                    edit_email = col2.text_input("Email", value=str(row['email']))
-                    edit_pass = col1.text_input("Пароль", value=str(row['password']))
-                    edit_role = col2.selectbox(
-                        "Роль", 
-                        ["Менеджер", "Виробництво", "Адмін", "Супер Адмін"],
-                        index=["Менеджер", "Виробництво", "Адмін", "Супер Адмін"].index(row['role']) if row['role'] in ["Менеджер", "Виробництво", "Адмін", "Супер Адмін"] else 0
-                    )
+        if df_users.empty:
+            st.warning("⚠️ База користувачів не завантажена.")
+        else:
+            # 1.1 Додавання нового користувача
+            with st.expander("➕ Додати нового співробітника"):
+                with st.form("add_user_form", clear_on_submit=True):
+                    c1, c2 = st.columns(2)
+                    new_login = c1.text_input("Логін (Ім'я)")
+                    new_email = c2.text_input("Email (для входу)").lower().strip()
+                    new_pass = c1.text_input("Пароль", type="default")
+                    new_role = c2.selectbox("Роль", ["Менеджер", "Виробництво", "Адмін", "Супер Адмін"])
                     
-                    btn_save, btn_del = st.columns([1, 1])
-                    
-if btn_save.form_submit_button("💾 Зберегти зміни"):
-    # Створюємо новий рядок з оновленими даними
-    updated_row = {
-        'email': edit_email.lower().strip(),
-        'login': edit_login.strip(),
-        'password': str(edit_pass).strip(),
-        'role': edit_role,
-        'last_seen': row.get('last_seen', '-')
-    }
-    
-    # Оновлюємо DataFrame через фільтр по email (найнадійніший спосіб)
-    df_users.loc[df_users['email'] == row['email'], ['email', 'login', 'password', 'role']] = [
-        updated_row['email'], updated_row['login'], updated_row['password'], updated_row['role']
-    ]
-    
-    # Спроба збереження
-    success = save_csv(USERS_CSV_ID, df_users)
-    
-    if success:
-        st.success(f"Зміни для {edit_login} збережено в хмарі!")
-        st.rerun()
-    else:
-        st.error("Не вдалося відправити дані на Google Drive. Перевірте консоль.")
+                    if st.form_submit_button("Створити акаунт"):
+                        if new_login and new_email and new_pass:
+                            if new_email in df_users['email'].astype(str).values:
+                                st.error("Користувач з таким Email вже існує!")
+                            else:
+                                new_row = pd.DataFrame([{
+                                    'email': new_email,
+                                    'login': new_login,
+                                    'password': str(new_pass),
+                                    'role': new_role,
+                                    'last_seen': '-'
+                                }])
+                                df_users = pd.concat([df_users, new_row], ignore_index=True)
+                                if save_csv(USERS_CSV_ID, df_users):
+                                    st.success(f"Акаунт {new_login} успішно створено!")
+                                    st.rerun()
+                        else:
+                            st.warning("Будь ласка, заповніть всі поля.")
 
-                    # Видалення (забороняємо видаляти самого себе)
-                    if row['email'] != auth_data.get('email'):
-                        if btn_del.form_submit_button("🗑️ Видалити користувача"):
-                            df_users = df_users.drop(idx)
-                            save_csv(USERS_CSV_ID, df_users)
-                            st.success("Користувача видалено!")
-                            st.rerun()
-                    else:
-                        btn_del.info("Це ваш акаунт")
+            st.divider()
 
-    # --- ВКЛАДКА: ДОДАВАННЯ НОВОГО ---
-    with tab_add:
-        st.subheader("Створення нового акаунта")
-        with st.form("new_user_form", clear_on_submit=True):
-            new_login = st.text_input("Ім'я (логін)")
-            new_email = st.text_input("Email (для входу)")
-            new_pass = st.text_input("Пароль")
-            new_role = st.selectbox("Призначити роль", ["Менеджер", "Виробництво", "Адмін", "Супер Адмін"])
+            # 1.2 Список та редагування існуючих користувачів
+            st.subheader("Список користувачів")
             
-            if st.form_submit_button("✨ Створити"):
-                if new_login and new_email and new_pass:
-                    # Перевірка на дублікат email
-                    if new_email.lower().strip() in df_users['email'].astype(str).values:
-                        st.error("Користувач з таким Email вже існує!")
-                    else:
-                        new_data = {
-                            'email': new_email.lower().strip(),
-                            'login': new_login.strip(),
-                            'password': str(new_pass).strip(),
-                            'role': new_role,
-                            'last_seen': '-'
-                        }
-                        df_users = pd.concat([df_users, pd.DataFrame([new_data])], ignore_index=True)
-                        save_csv(USERS_CSV_ID, df_users)
-                        st.success(f"Користувача {new_login} успішно додано!")
-                        st.rerun()
+            for idx, row in df_users.iterrows():
+                # Відображення картки користувача
+                with st.expander(f"👤 {row['login']} — {row['role']} ({row['email']})"):
+                    with st.form(key=f"edit_user_{idx}"):
+                        col1, col2 = st.columns(2)
+                        
+                        # Поля для редагування
+                        edit_login = col1.text_input("Ім'я / Логін", value=str(row['login']))
+                        edit_email = col2.text_input("Email", value=str(row['email']))
+                        edit_pass = col1.text_input("Пароль", value=str(row['password']))
+                        
+                        # Вибір ролі з автоматичним фокусом на поточну
+                        roles_list = ["Менеджер", "Виробництво", "Адмін", "Супер Адмін"]
+                        current_role_idx = roles_list.index(row['role']) if row['role'] in roles_list else 0
+                        edit_role = col2.selectbox("Змінити роль", roles_list, index=current_role_idx)
+                        
+                        btn_save, btn_del = st.columns([1, 1])
+                        
+                        # Кнопка ЗБЕРЕГТИ
+                        if btn_save.form_submit_button("💾 Зберегти зміни"):
+                            df_users.loc[idx, 'login'] = edit_login.strip()
+                            df_users.loc[idx, 'email'] = edit_email.lower().strip()
+                            df_users.loc[idx, 'password'] = str(edit_pass).strip()
+                            df_users.loc[idx, 'role'] = edit_role
+                            
+                            if save_csv(USERS_CSV_ID, df_users):
+                                st.success("Дані оновлено!")
+                                st.rerun()
+
+                        # Кнопка ВИДАЛИТИ (Заборона на видалення себе)
+                        if row['email'] == current_user_email:
+                            btn_del.info("🛡️ Ваш акаунт")
+                        else:
+                            if btn_del.form_submit_button("🗑️ Видалити"):
+                                df_users = df_users.drop(idx)
+                                if save_csv(USERS_CSV_ID, df_users):
+                                    st.success("Користувача видалено")
+                                    st.rerun()
+
+    # --- ВКЛАДКА 2: КЕРУВАННЯ БАЗОЮ (Очищення) ---
+    with tab_db:
+        st.subheader("🧹 Технічне обслуговування")
+        st.warning("Увага! Дії в цьому розділі незворотні.")
+        
+        with st.expander("🔥 Очистити базу замовлень"):
+            st.write("Це видалить усі замовлення та товари з системи.")
+            confirm = st.text_input("Введіть 'ВИДАЛИТИ' для підтвердження:")
+            
+            if st.button("Виконати повне очищення"):
+                if confirm == "ВИДАЛИТИ":
+                    # Очищуємо заголовки замовлень
+                    empty_orders = pd.DataFrame(columns=['ID', 'Дата', 'Менеджер', 'Клієнт', 'Телефон', 'Місто', 'ТТН', 'Сума', 'Готовність', 'Коментар'])
+                    save_csv(ORDERS_CSV_ID, empty_orders)
+                    
+                    # Очищуємо список товарів
+                    empty_items = pd.DataFrame(columns=['order_id', 'назва', 'арт', 'ціна', 'к-ть', 'сума'])
+                    save_csv(ITEMS_CSV_ID, empty_items)
+                    
+                    st.success("Бази даних очищені!")
+                    st.rerun()
                 else:
-                    st.warning("Заповніть усі поля!")
+                    st.error("Код підтвердження невірний.")
+
+# Завершення коду
