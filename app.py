@@ -14,7 +14,7 @@ from modules.admin_module import show_admin_panel
 
 # 1. Початкове налаштування сторінки
 st.set_page_config(
-    page_title="GETMANN ERP",
+    page_title="GETMANN Pro",
     layout="wide",
     page_icon="🏭",
     initial_sidebar_state="expanded"
@@ -39,7 +39,7 @@ user_display = user.get('login') or user.get('email', 'Невідомий')
 
 # 5. Бічна панель (Sidebar)
 with st.sidebar:
-    st.title("🏭 GETMANN ERP")
+    st.title("🏭 GETMANN Pro")
     st.markdown(f"**Користувач:** `{user_display}`")
     st.markdown(f"**Роль:** `{role}`")
     st.divider()
@@ -80,4 +80,5 @@ elif menu == "🔐 Адмін-панель":
     show_admin_panel()
 
 # 7. Футер (опціонально)
-st.sidebar.caption("GETMANN ERP v3.0 (Stable Build)")
+st.sidebar.caption("GETMANN Pro v3.1 (Stable Build)")
+
