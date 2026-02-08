@@ -39,7 +39,7 @@ def login_screen():
             st.rerun()
 
     # 2. Форма входу
-    st.title("🔐 GETMANN ERP | Вхід")
+    st.title("🔐 GETMANN Pro | Вхід")
     
     with st.form("login_form"):
         email_input = st.text_input("Email").lower().strip()
