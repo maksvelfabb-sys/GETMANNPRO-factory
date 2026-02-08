@@ -48,6 +48,7 @@ def show_orders_page(role):
             c1, c2 = st.columns(2)
             n_cl = c1.text_input("Клієнт")
             n_ph = c2.text_input("Телефон")
+            n_c2 = c2.text_input("Клієнт")
             
             if st.form_submit_button("Створити порожню картку"):
                 new_row = pd.DataFrame([{
