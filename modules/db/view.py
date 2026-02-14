@@ -2,6 +2,64 @@ import streamlit as st
 import pandas as pd
 from modules.drive_tools import load_csv, save_csv, ORDERS_CSV_ID
 import webbrowser
+from modules.drive_tools import get_drive_service, load_csv, ORDERS_CSV_ID
+
+def find_drawing_file(search_query):
+    """Шукає файл у конкретній папці за назвою або артикулом"""
+    service = get_drive_service()
+    if not service or not search_query:
+        return None
+    
+    folder_id = "1SQyZ6OUk9xNBMvh98Ob4zw9LVaqWRtas"
+    # Формуємо запит: шукаємо файл у папці, назва якого містить наш текст
+    query = f"'{folder_id}' in parents and name contains '{search_query}' and trashed = false"
+    
+    try:
+        results = service.files().list(q=query, fields="files(id, name, webViewLink)").execute()
+        files = results.get('files', [])
+        return files[0] if files else None
+    except Exception:
+        return None
+
+def render_order_card(order):
+    order_id = str(get_val(order, ['order_id', 'ID', '№', 'id']))
+    sku = str(get_val(order, ['sku', 'Артикул']))
+    product_name = str(get_val(order, ['product_name', 'Товар']))
+    
+    with st.container(border=True):
+        # ... (верхня частина картки з даними клієнта) ...
+        
+        st.markdown("**📂 ТЕХНІЧНА ДОКУМЕНТАЦІЯ**")
+        
+        # Пріоритет пошуку: спочатку по артикулу, якщо немає - по назві
+        search_term = sku if sku and sku != "---" else product_name
+        drawing_file = find_drawing_file(search_term)
+        
+        col_d1, col_d2 = st.columns([1, 2])
+        
+        with col_d1:
+            if drawing_file:
+                # Якщо файл знайдено - кнопка веде на конкретне креслення
+                st.link_button(
+                    "📄 Відкрити креслення", 
+                    drawing_file['webViewLink'], 
+                    type="primary",
+                    use_container_width=True
+                )
+            else:
+                # Якщо не знайдено - ведемо в загальну папку
+                folder_url = f"https://drive.google.com/drive/folders/1SQyZ6OUk9xNBMvh98Ob4zw9LVaqWRtas"
+                st.link_button(
+                    "📁 Тека креслень", 
+                    folder_url, 
+                    use_container_width=True
+                )
+        
+        with col_d2:
+            if drawing_file:
+                st.success(f"Знайдено файл: {drawing_file['name']}")
+            else:
+                st.warning(f"Файл '{search_term}' не знайдено")
 
 def get_val(order, keys):
     for key in keys:
