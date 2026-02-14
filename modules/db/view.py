@@ -2,62 +2,62 @@ import streamlit as st
 import pandas as pd
 from modules.drive_tools import load_csv, ORDERS_CSV_ID
 
+def get_val(order, keys):
+    """Шукає значення в рядку за декількома варіантами назв колонок"""
+    for key in keys:
+        if key in order and pd.notnull(order[key]):
+            return order[key]
+    return "---"
+
 def render_order_card(order):
-    """Функція для малювання однієї картки замовлення"""
-    # Створюємо контейнер з рамкою для кожної картки
     with st.container(border=True):
-        # Шапка картки: Номер та Статус
-        col_head1, col_head2 = st.columns([3, 1])
-        with col_head1:
-            st.markdown(f"### 📦 Замовлення №{order.get('order_id', '---')}")
-        with col_head2:
-            status = order.get('status', 'Новий')
+        # 1. ШУКАЄМО ДАНІ (синоніми назв колонок)
+        order_id = get_val(order, ['order_id', 'ID', '№', 'id'])
+        client_name = get_val(order, ['client_name', 'ПІБ', 'Клієнт', 'ФИО'])
+        client_phone = get_val(order, ['client_phone', 'Телефон', 'Тел'])
+        product = get_val(order, ['product_name', 'Товар', 'Назва'])
+        sku = get_val(order, ['sku', 'Артикул', 'sku_code'])
+        total = get_val(order, ['total_amount', 'Сума', 'Ціна', 'total'])
+        prepayment = get_val(order, ['prepayment', 'Аванс', 'Предоплата'])
+        status = get_val(order, ['status', 'Статус'])
+
+        # ШАПКА КАРТКИ
+        col_h1, col_h2 = st.columns([3, 1])
+        with col_h1:
+            st.markdown(f"### 📦 Замовлення №{order_id}")
+        with col_h2:
             st.info(f"**{status}**")
 
         st.divider()
 
-        # Основний контент: Клієнт та Товар
-        col_main1, col_main2 = st.columns(2)
-        
-        with col_main1:
-            st.markdown("**👤 ДАНІ КЛІЄНТА**")
-            st.write(f"**ПІБ:** {order.get('client_name', '---')}")
-            st.write(f"**Тел:** {order.get('client_phone', '---')}")
-            if order.get('client_address'):
-                st.write(f"**Адреса:** {order.get('client_address', '---')}")
-            
-        with col_main2:
-            st.markdown("**🛠 ДЕТАЛІ ТОВАРУ**")
-            st.write(f"**Товар:** {order.get('product_name', '---')}")
-            st.write(f"**Артикул:** `{order.get('sku', '---')}`")
-            st.write(f"**К-сть:** {order.get('quantity', '1')}")
+        # ОСНОВНІ ДАНІ
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**👤 КЛІЄНТ**")
+            st.write(f"**Ім'я:** {client_name}")
+            st.write(f"**Тел:** {client_phone}")
+        with col2:
+            st.markdown("**🛠 ТОВАР**")
+            st.write(f"**Назва:** {product}")
+            st.write(f"**Артикул:** `{sku}`")
 
         st.divider()
 
-        # Фінансова частина
-        col_fin1, col_fin2, col_fin3 = st.columns(3)
-        
-        # Конвертуємо в числа для розрахунків
+        # ФІНАНСИ
+        c_fin1, c_fin2, c_fin3 = st.columns(3)
         try:
-            total = float(order.get('total_amount', 0))
-            prepayment = float(order.get('prepayment', 0))
-            balance = total - prepayment
-        except (ValueError, TypeError):
-            total, prepayment, balance = 0.0, 0.0, 0.0
+            t_val = float(str(total).replace(',', '.')) if total != "---" else 0
+            p_val = float(str(prepayment).replace(',', '.')) if prepayment != "---" else 0
+            diff = t_val - p_val
+        except:
+            t_val, p_val, diff = 0, 0, 0
 
-        with col_fin1:
-            st.metric("Загальна сума", f"{total} грн")
-        with col_fin2:
-            st.metric("Аванс", f"{prepayment} грн")
-        with col_fin3:
-            # Виділяємо залишок червоним, якщо він більше 0
-            color = "normal" if balance <= 0 else "inverse"
-            st.metric("Залишок (доплата)", f"{balance} грн", delta=f"-{prepayment}", delta_color=color)
-
-        # Коментарі та примітки
-        if order.get('comment'):
-            with st.expander("📝 Переглянути коментар"):
-                st.write(order['comment'])
+        with c_fin1:
+            st.metric("Загальна сума", f"{t_val} грн")
+        with c_fin2:
+            st.metric("Аванс", f"{p_val} грн")
+        with c_fin3:
+            st.metric("Доплата", f"{diff} грн", delta=f"-{p_val}" if p_val > 0 else None, delta_color="inverse")
 
 def show_order_cards():
     """Головна функція для відображення списку всіх замовлень"""
