@@ -47,12 +47,4 @@ def update_order_header(order_id, updated_row):
             df.at[idx[0], col] = val
         save_csv(ORDERS_HEADER_ID, df)
 
-# Завантажуємо дані
-df_orders = load_csv(ORDERS_CSV_ID)
 
-if not df_orders.empty:
-    # Сортуємо: нові зверху (якщо є колонка дати)
-    for _, row in df_orders.iterrows():
-        render_order_card(row)
-else:
-    st.warning("База замовлень порожня.")
