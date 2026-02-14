@@ -1,7 +1,8 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from .core import get_next_order_id, save_full_order
+from modules.db.core import get_next_order_id, save_full_order
+from modules.db.view import render_order_card
 
 def show_create_order():
     st.header("🆕 Прийняти нове замовлення")
