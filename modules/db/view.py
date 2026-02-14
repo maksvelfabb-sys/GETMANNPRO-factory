@@ -1,198 +1,89 @@
 import streamlit as st
 import pandas as pd
-from modules.drive_tools import load_csv, save_csv
-from modules.drawings import get_pdf_link
-from .core import ORDERS_HEADER_ID, ORDER_ITEMS_ID, update_order_header
-
-def get_status_class(status):
-    mapping = {
-        "В черзі": "status-v-cherzi",
-        "В роботі": "status-v-roboti",
-        "Готово": "status-gotovo",
-        "Відправлено": "status-vidpravleno"
-    }
-    return mapping.get(status, "")
-
-def show_order_cards():
-    # ВИПРАВЛЕНО: Прибрали імпорт, просто викликаємо функцію нижче
-    if 'editing_id' in st.session_state and st.session_state.editing_id:
-        show_edit_form(st.session_state.editing_id)
-        return
-
-    df_h = load_csv(ORDERS_HEADER_ID)
-    df_i = load_csv(ORDER_ITEMS_ID)
-    
-    if df_h.empty:
-        st.info("Журнал замовлень порожній.")
-        return
-
-    # --- ПАНЕЛЬ ФІЛЬТРІВ (Компактна) ---
-    c1, c2, c3 = st.columns([2, 1, 1])
-    f_search = c1.text_input("🔍 Пошук", placeholder="Клієнт, ID, ТТН...")
-    f_manager = c2.selectbox("👤 Менеджер", ["Всі"] + sorted(list(df_h['Менеджер'].unique()) if 'Менеджер' in df_h.columns else []))
-    f_view = c3.radio("Вигляд", ["🗂️", "📊"], horizontal=True)
-
-    view_df = df_h.copy()
-    if f_manager != "Всі": view_df = view_df[view_df['Менеджер'] == f_manager]
-    if f_search: view_df = view_df[view_df.apply(lambda r: f_search.lower() in str(r.values).lower(), axis=1)]
-    
-    view_df = view_df.iloc[::-1]
-
-    if f_view == "📊":
-        st.dataframe(view_df, use_container_width=True, hide_index=True)
-    else:
-        for _, row in view_df.iterrows():
-            status_class = get_status_class(row['Готовність'])
-            
-            with st.container():
-                # Картка з кольоровою лінією зліва
-                st.markdown(f'<div class="{status_class}" style="padding: 10px; border-radius: 5px; margin-bottom: 8px; border: 1px solid #ddd; border-left-width: 8px !important;">', unsafe_allow_html=True)
-                
-                col_title, col_edit, col_status = st.columns([4, 0.5, 1])
-                
-                col_title.markdown(f'<span style="font-size:1.1rem; font-weight:bold;">№{row["ID"]} — {row["Клієнт"]}</span>', unsafe_allow_html=True)
-                
-                # Кнопка редагування (олівець)
-                if col_edit.button("📝", key=f"ed_{row['ID']}"):
-                    st.session_state.editing_id = row['ID']
-                    st.rerun()
-
-                # Зміна статусу
-                with col_status.popover(f"⚙️ {row['Готовність']}"):
-                    new_st = st.selectbox("Змінити статус", ["В черзі", "В роботі", "Готово", "Відправлено"], 
-                                        index=["В черзі", "В роботі", "Готово", "Відправлено"].index(row['Готовність']),
-                                        key=f"pop_st_{row['ID']}")
-                    if st.button("Оновити", key=f"pop_btn_{row['ID']}"):
-                        update_order_header(row['ID'], {'Готовність': new_st})
-                        st.rerun()
-
-                # Інфо рядок
-                st.markdown(f'<div style="font-size:0.85rem; color:#555;">📍 {row.get("Місто", "")} | 📱 {row["Телефон"]} | 👤 {row["Менеджер"]}</div>', unsafe_allow_html=True)
-
-                # Товари (згорнуто для економії місця)
-                with st.expander("📦 Список товарів"):
-                    items = df_i[df_i['order_id'] == str(row['ID'])]
-                    if not items.empty:
-                        for _, it in items.iterrows():
-                            it_c1, it_c2 = st.columns([4, 1])
-                            it_c1.write(f"• {it['назва']} ({it['арт']}) x{it['к-ть']}")
-                            link = get_pdf_link(it['арт'])
-                            if link:
-                                it_c2.markdown(f'<a href="{link}" target="_blank" class="pdf-button">PDF</a>', unsafe_allow_html=True)
-                
-                st.markdown('</div>', unsafe_allow_html=True)
-
-def show_edit_form(order_id):
-    """Функція для редагування замовлення з перевіркою наявності даних"""
-    st.button("⬅️ Назад", on_click=lambda: st.session_state.update({"editing_id": None}))
-    
-    df_h = load_csv(ORDERS_HEADER_ID)
-    
-    # БЕЗПЕЧНИЙ ПОШУК: перевіряємо і рядки, і числа
-    mask = (df_h['ID'].astype(str) == str(order_id))
-    results = df_h[mask]
-    
-    if results.empty:
-        st.error(f"Помилка: Замовлення №{order_id} не знайдено в базі даних.")
-        if st.button("Спробувати оновити базу"):
-            st.rerun()
-        return
-
-    # Тепер безпечно беремо перший рядок
-    order_row = results.iloc[0]
-    st.header(f"📝 Редагування №{order_id}")
-
-    df_i = load_csv(ORDER_ITEMS_ID)
-    
-    # --- ДАЛІ ВАШ КОД ФОРМИ РЕДАГУВАННЯ ---
-    with st.container(border=True):
-        c1, c2 = st.columns(2)
-        u_client = c1.text_input("Клієнт", value=str(order_row.get('Клієнт', '')))
-        u_phone = c2.text_input("Телефон", value=str(order_row.get('Телефон', '')))
-        u_city = c1.text_input("Місто", value=str(order_row.get('Місто', '')))
-        u_ttn = c2.text_input("ТТН", value=str(order_row.get('ТТН', '')))
-        
-        # Безпечний пошук індексу для статусу
-        statuses = ["В черзі", "В роботі", "Готово", "Відправлено"]
-        current_status = order_row.get('Готовність', 'В черзі')
-        try:
-            st_idx = statuses.index(current_status)
-        except ValueError:
-            st_idx = 0
-            
-        u_status = st.selectbox("Статус", statuses, index=st_idx)
-
-    if st.button("💾 ЗБЕРЕГТИ ЗМІНИ", type="primary"):
-        update_order_header(order_id, {
-            'Клієнт': u_client, 
-            'Телефон': u_phone, 
-            'Місто': u_city, 
-            'ТТН': u_ttn, 
-            'Готовність': u_status
-        })
-        st.session_state.editing_id = None
-        st.success("Дані оновлено!")
-        st.rerun()
-
-import streamlit as st
+from modules.drive_tools import load_csv, ORDERS_CSV_ID
 
 def render_order_card(order):
-    # Визначаємо колір статусу для візуального акценту
-    status_colors = {
-        "Новий": "blue",
-        "В роботі": "orange",
-        "Готово": "green",
-        "Скасовано": "gray"
-    }
-    status_color = status_colors.get(order.get('status'), "blue")
-
-    # Створюємо контейнер картки з рамкою
+    """Функція для малювання однієї картки замовлення"""
+    # Створюємо контейнер з рамкою для кожної картки
     with st.container(border=True):
-        # Рядок 1: Заголовок та Статус
+        # Шапка картки: Номер та Статус
         col_head1, col_head2 = st.columns([3, 1])
         with col_head1:
             st.markdown(f"### 📦 Замовлення №{order.get('order_id', '---')}")
         with col_head2:
-            st.markdown(f":{status_color}[**{order.get('status', 'Невідомо')}**]")
+            status = order.get('status', 'Новий')
+            st.info(f"**{status}**")
 
         st.divider()
 
-        # Рядок 2: Дані клієнта та Товар
+        # Основний контент: Клієнт та Товар
         col_main1, col_main2 = st.columns(2)
         
         with col_main1:
-            st.markdown("**👤 КЛІЄНТ**")
+            st.markdown("**👤 ДАНІ КЛІЄНТА**")
             st.write(f"**ПІБ:** {order.get('client_name', '---')}")
             st.write(f"**Тел:** {order.get('client_phone', '---')}")
-            st.write(f"**Адреса:** {order.get('client_address', '---')}")
+            if order.get('client_address'):
+                st.write(f"**Адреса:** {order.get('client_address', '---')}")
             
         with col_main2:
-            st.markdown("**🛠 ТОВАР**")
-            st.write(f"**Назва:** {order.get('product_name', '---')}")
+            st.markdown("**🛠 ДЕТАЛІ ТОВАРУ**")
+            st.write(f"**Товар:** {order.get('product_name', '---')}")
             st.write(f"**Артикул:** `{order.get('sku', '---')}`")
             st.write(f"**К-сть:** {order.get('quantity', '1')}")
 
         st.divider()
 
-        # Рядок 3: Фінансова частина
+        # Фінансова частина
         col_fin1, col_fin2, col_fin3 = st.columns(3)
         
-        total = float(order.get('total_amount', 0))
-        prepayment = float(order.get('prepayment', 0))
-        balance = total - prepayment
+        # Конвертуємо в числа для розрахунків
+        try:
+            total = float(order.get('total_amount', 0))
+            prepayment = float(order.get('prepayment', 0))
+            balance = total - prepayment
+        except (ValueError, TypeError):
+            total, prepayment, balance = 0.0, 0.0, 0.0
 
         with col_fin1:
             st.metric("Загальна сума", f"{total} грн")
         with col_fin2:
-            st.metric("Аванс", f"{prepayment} грн", delta=None)
+            st.metric("Аванс", f"{prepayment} грн")
         with col_fin3:
-            st.metric("До сплати", f"{balance} грн", delta=f"-{prepayment}", delta_color="inverse")
+            # Виділяємо залишок червоним, якщо він більше 0
+            color = "normal" if balance <= 0 else "inverse"
+            st.metric("Залишок (доплата)", f"{balance} грн", delta=f"-{prepayment}", delta_color=color)
 
-        # Коментар (якщо є)
+        # Коментарі та примітки
         if order.get('comment'):
             with st.expander("📝 Переглянути коментар"):
                 st.write(order['comment'])
 
-        # Кнопки дій (якщо потрібно)
-        if st.button("Редагувати", key=f"edit_{order['order_id']}"):
-            st.session_state.editing_order = order['order_id']
+def show_order_cards():
+    """Головна функція для відображення списку всіх замовлень"""
+    st.title("📋 Картки замовлень")
+    
+    # Кнопка оновлення даних
+    if st.button("🔄 Оновити дані з Google Диску"):
+        st.cache_data.clear()
+        st.rerun()
+
+    # Завантажуємо дані за допомогою drive_tools
+    df_orders = load_csv(ORDERS_CSV_ID)
+
+    if df_orders.empty:
+        st.warning("База замовлень порожня або файл не знайдено.")
+        return
+
+    # Якщо є пошук (опційно)
+    search = st.text_input("🔍 Пошук за ПІБ клієнта або номером замовлення")
+    if search:
+        df_orders = df_orders[
+            df_orders['client_name'].str.contains(search, case=False, na=False) |
+            df_orders['order_id'].astype(str).str.contains(search, case=False, na=False)
+        ]
+
+    # Виводимо картки замовлень
+    # Сортуємо: останні замовлення зазвичай мають бути зверху
+    for _, row in df_orders.iterrows():
+        render_order_card(row)
