@@ -1,98 +1,62 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from modules.db.core import get_next_order_id, save_full_order
-from modules.db.view import render_order_card
+from modules.drive_tools import load_csv, save_csv, ORDERS_CSV_ID
 
-def show_create_order():
-    st.header("🆕 Прийняти нове замовлення")
-    
-    # Ініціалізація тимчасового списку товарів (кошика)
-    if 'temp_items' not in st.session_state:
-        st.session_state.temp_items = []
-
-    user_info = st.session_state.get('auth', {})
-    manager_name = user_info.get('login') or user_info.get('email', 'Користувач')
-
-    # --- 1. ОСНОВНІ ДАНІ ЗАМОВЛЕННЯ ---
+def show_create_order_form():
+    """Функція малювання форми створення нового замовлення"""
     with st.container(border=True):
-        st.subheader("👤 Дані клієнта та доставки")
-        c1, c2 = st.columns(2)
+        st.markdown("### 🆕 Створення нового замовлення")
         
-        client = c1.text_input("Клієнт (ПІБ)")
-        phone = c2.text_input("Телефон")
-        city = c1.text_input("Місто та відділення НП") # Ось ваше місто
-        ttn = c2.text_input("ТТН (якщо є)")
-        
-        comment = st.text_area("Коментар")
-
-    # --- 2. ДОДАВАННЯ ТОВАРІВ (Поза межами форми для динамічності) ---
-    with st.container(border=True):
-        st.subheader("📦 Додати товари")
-        it1, it2, it3, it4 = st.columns([3, 2, 1, 1])
-        
-        name = it1.text_input("Назва товару", key="in_name")
-        art = it2.text_input("Артикул", key="in_art")
-        price = it3.number_input("Ціна (грн)", min_value=0, value=0, key="in_price")
-        qty = it4.number_input("К-ть", min_value=1, value=1, key="in_qty")
-        
-        if st.button("➕ Додати до замовлення", use_container_width=True):
-            if name and art:
-                total = price * qty
-                st.session_state.temp_items.append({
-                    'назва': name,
-                    'арт': art,
-                    'ціна': price,
-                    'к-ть': qty,
-                    'сума': total
-                })
-                st.rerun()
-            else:
-                st.warning("Введіть назву та артикул")
-
-    # --- 3. ВІДОБРАЖЕННЯ КОШИКА ---
-    if st.session_state.temp_items:
-        st.write("### Склад замовлення:")
-        temp_df = pd.DataFrame(st.session_state.temp_items)
-        st.table(temp_df)
-        
-        total_sum = temp_df['сума'].sum()
-        st.markdown(f"#### 💰 Загальна сума: **{total_sum} грн**")
-        
-        if st.button("🗑️ Очистити кошик"):
-            st.session_state.temp_items = []
-            st.rerun()
-
-    st.write("---")
-
-    # --- 4. ФІНАЛЬНА КНОПКА ЗБЕРЕЖЕННЯ ---
-    if st.button("🚀 ВІДПРАВИТИ ЗАМОВЛЕННЯ В БАЗУ", type="primary", use_container_width=True):
-        if not client or not city:
-            st.error("Поля 'Клієнт' та 'Місто' є обов'язковими!")
-        elif not st.session_state.temp_items:
-            st.error("Додайте хоча б один товар у замовлення!")
-        else:
-            next_id = get_next_order_id()
-            header = {
-                'ID': str(next_id),
-                'Дата': datetime.now().strftime("%d.%m.%Y"),
-                'Менеджер': manager_name,
-                'Клієнт': client,
-                'Телефон': phone,
-                'Місто': city,
-                'ТТН': ttn,
-                'Сума': str(temp_df['сума'].sum()),
-                'Готовність': 'В черзі',
-                'Коментар': comment
-            }
+        with st.form("new_order_form", clear_on_submit=True):
+            col1, col2, col3 = st.columns(3)
+            f_name = col1.text_input("Клієнт (ПІБ)")
+            f_phone = col2.text_input("Телефон")
+            f_addr = col3.text_input("Адреса доставки")
             
-            # Підготовка товарів для бази (додаємо ID замовлення до кожного товару)
-            final_items = []
-            for item in st.session_state.temp_items:
-                item['order_id'] = str(next_id)
-                final_items.append(item)
+            col4, col5, col6 = st.columns([2, 1, 1])
+            f_prod = col4.text_input("Назва товару")
+            f_sku = col5.text_input("Артикул")
+            f_qty = col6.number_input("Кількість", min_value=1, value=1)
+            
+            col7, col8 = st.columns(2)
+            f_total = col7.number_input("Загальна сума (грн)", min_value=0.0)
+            f_pre = col8.number_input("Аванс (грн)", min_value=0.0)
+            
+            btn_save, btn_cancel = st.columns(2)
+            
+            if btn_save.form_submit_button("✅ ЗБЕРЕГТИ ТА ДОДАТИ", use_container_width=True):
+                if not f_name or not f_prod:
+                    st.error("Будь ласка, заповніть ПІБ клієнта та назву товару!")
+                    return
+
+                df = load_csv(ORDERS_CSV_ID)
                 
-            save_full_order(header, final_items)
-            st.session_state.temp_items = [] # Чистимо кошик
-            st.success(f"Замовлення №{next_id} збережено!")
-            st.balloons()
+                # Визначаємо колонку ID та новий номер
+                id_col = next((c for c in ['order_id', 'ID', 'id'] if c in df.columns), 'order_id')
+                new_id = int(df[id_col].max() + 1) if not df.empty else 1001
+                
+                new_row = {
+                    id_col: new_id,
+                    'client_name': f_name,
+                    'client_phone': f_phone,
+                    'address': f_addr,
+                    'product': f_prod,
+                    'sku': f_sku,
+                    'qty': f_qty,
+                    'total': f_total,
+                    'prepayment': f_pre,
+                    'status': 'Новий',
+                    'date': datetime.now().strftime("%d.%m.%Y %H:%M")
+                }
+                
+                df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+                save_csv(ORDERS_CSV_ID, df)
+                
+                st.session_state.creating_now = False # Закриваємо форму
+                st.success(f"Замовлення №{new_id} успішно створено!")
+                st.rerun()
+            
+            if btn_cancel.form_submit_button("❌ СКАСУВАТИ", use_container_width=True):
+                st.session_state.creating_now = False
+                st.rerun()
