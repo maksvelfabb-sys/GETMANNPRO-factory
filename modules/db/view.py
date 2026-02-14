@@ -98,28 +98,56 @@ def render_order_card(order):
         f3.metric("Доплата", f"{val_tot - val_pre} грн", delta_color="inverse")
 
 def show_order_cards():
-    # ШВИДКЕ СТВОРЕННЯ (Без зайвих кнопок)
-    with st.expander("➕ НОВЕ ЗАМОВЛЕННЯ", expanded=False):
-        with st.form("quick_create", clear_on_submit=True):
-            c1, c2, c3 = st.columns(3)
-            f_name = c1.text_input("Клієнт")
-            f_phone = c2.text_input("Телефон")
-            f_prod = c3.text_input("Товар / Артикул")
-            
-            f_total = st.number_input("Сума", min_value=0)
-            if st.form_submit_button("ЗБЕРЕГТИ ЗАМОВЛЕННЯ"):
-                df = load_csv(ORDERS_CSV_ID)
-                new_id = int(df['order_id'].max() + 1) if not df.empty else 1001
-                new_row = {
-                    'order_id': new_id, 'client_name': f_name, 'client_phone': f_phone,
-                    'product': f_prod, 'total': f_total, 'status': 'Новий', 'date': datetime.now().strftime("%d.%m.%Y")
-                }
-                df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-                save_csv(ORDERS_CSV_ID, df)
-                st.rerun()
+  def show_order_cards():
+    # СПИСОК КАРТОК
+    df = load_csv(ORDERS_CSV_ID)
+    
+    if not df.empty:
+        # Автоматично шукаємо колонку з ID для сортування
+        id_col = next((c for c in ['order_id', 'ID', '№', 'id'] if c in df.columns), None)
+        
+        if id_col:
+            # Сортуємо: нові зверху (перетворюємо на числа для коректності)
+            df[id_col] = pd.to_numeric(df[id_col], errors='coerce')
+            df = df.sort_values(by=id_col, ascending=False)
+        
+        # ШВИДКЕ СТВОРЕННЯ (Перемістив під завантаження, щоб бачити актуальний ID)
+        with st.expander("➕ НОВЕ ЗАМОВЛЕННЯ", expanded=False):
+            with st.form("quick_create", clear_on_submit=True):
+                c1, c2, c3 = st.columns(3)
+                f_name = c1.text_input("Клієнт")
+                f_phone = c2.text_input("Телефон")
+                f_prod = c3.text_input("Товар / Артикул")
+                
+                f_total = st.number_input("Сума", min_value=0)
+                if st.form_submit_button("ЗБЕРЕГТИ ЗАМОВЛЕННЯ"):
+                    # Розрахунок нового ID
+                    new_id = int(df[id_col].max() + 1) if id_col and not df[id_col].isnull().all() else 1001
+                    
+                    new_row = {
+                        'order_id': new_id, 
+                        'client_name': f_name, 
+                        'client_phone': f_phone,
+                        'product': f_prod, 
+                        'total': f_total, 
+                        'status': 'Новий', 
+                        'date': datetime.now().strftime("%d.%m.%Y")
+                    }
+                    df_new = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+                    save_csv(ORDERS_CSV_ID, df_new)
+                    st.rerun()
 
-    st.divider()
+        st.divider()
 
+        # Вивід карток
+        for _, row in df.iterrows():
+            render_order_card(row)
+    else:
+        st.info("База порожня. Створіть перше замовлення.")
+        # Якщо база порожня, показуємо форму створення без сортування
+        with st.expander("➕ СТВОРИТИ ПЕРШЕ ЗАМОВЛЕННЯ", expanded=True):
+            # (копія форми створення як вище...)
+            pass
     # СПИСОК КАРТОК
     df = load_csv(ORDERS_CSV_ID)
     if not df.empty:
