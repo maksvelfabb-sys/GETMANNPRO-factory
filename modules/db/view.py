@@ -1,156 +1,129 @@
 import streamlit as st
 import pandas as pd
 from modules.drive_tools import load_csv, save_csv, get_drive_service, ORDERS_CSV_ID
+from datetime import datetime
 
-# Константа для папки з кресленнями
+# ID папки з кресленнями
 DRAWINGS_FOLDER_ID = "1SQyZ6OUk9xNBMvh98Ob4zw9LVaqWRtas"
 
-def find_drawing_file(search_query):
-    """Шукає файл у конкретній папці на Google Drive за назвою або артикулом"""
-    service = get_drive_service()
-    if not service or not search_query or search_query == "---":
-        return None
-    
-    # Запит: шукаємо файл у папці, назва якого містить наш текст
-    query = f"'{DRAWINGS_FOLDER_ID}' in parents and name contains '{search_query}' and trashed = false"
-    
-    try:
-        results = service.files().list(q=query, fields="files(id, name, webViewLink)").execute()
-        files = results.get('files', [])
-        return files[0] if files else None
-    except Exception:
-        return None
-
 def get_val(order, keys):
-    """Універсальний отримувач значень з рядка за списком можливих ключів"""
     for key in keys:
         if key in order and pd.notnull(order[key]):
             return order[key]
     return ""
 
-def update_field(order_id, field_mapping, new_value):
-    """Автоматичне збереження змін у Google CSV"""
+def update_db(order_id, field_name, new_value):
+    """Швидке оновлення поля без зайвих повідомлень"""
     df = load_csv(ORDERS_CSV_ID)
-    id_col = next((c for c in ['order_id', 'ID', '№', 'id'] if c in df.columns), None)
-    
+    id_col = next((c for c in ['order_id', 'ID', 'id'] if c in df.columns), None)
     if id_col:
         idx = df.index[df[id_col].astype(str) == str(order_id)].tolist()
         if idx:
-            # Знаходимо реальну назву колонки в файлі
-            real_col = next((c for c in df.columns if c.lower() in [f.lower() for f in field_mapping]), None)
-            if real_col:
-                # Зберігаємо лише якщо значення змінилося
-                if str(df.at[idx[0], real_col]) != str(new_value):
-                    df.at[idx[0], real_col] = new_value
-                    save_csv(ORDERS_CSV_ID, df)
-                    st.toast(f"✅ Оновлено: {real_col}")
+            # Знаходимо точну назву колонки
+            real_col = next((c for c in df.columns if c.lower() == field_name.lower() or c == field_name), field_name)
+            if str(df.at[idx[0], real_col]) != str(new_value):
+                df.at[idx[0], real_col] = new_value
+                save_csv(ORDERS_CSV_ID, df)
+                st.toast(f"💾 {real_col} збережено")
+
+def find_drawing(query):
+    service = get_drive_service()
+    if not service or not query or query == "---": return None
+    q = f"'{DRAWINGS_FOLDER_ID}' in parents and name contains '{query}' and trashed = false"
+    try:
+        results = service.files().list(q=q, fields="files(name, webViewLink)").execute()
+        files = results.get('files', [])
+        return files[0] if files else None
+    except: return None
 
 def render_order_card(order):
-    """Відображення картки замовлення з живим редагуванням та автопошуком креслень"""
-    order_id = str(get_val(order, ['order_id', 'ID', '№', 'id']))
-    sku = str(get_val(order, ['sku', 'Артикул']))
-    product_name = str(get_val(order, ['product_name', 'Товар']))
-    drawing_link = get_val(order, ['drawing', 'Креслення', 'link'])
-
+    """Картка, де все можна редагувати відразу"""
+    oid = str(get_val(order, ['order_id', 'ID']))
+    
     with st.container(border=True):
-        # --- Шапка та Статус ---
-        col_h1, col_h2 = st.columns([3, 1])
-        with col_h1:
-            st.markdown(f"### 📦 Замовлення №{order_id}")
-        with col_h2:
-            current_status = get_val(order, ['status', 'Статус'])
-            statuses = ["Новий", "В роботі", "Готово", "Видано", "Скасовано"]
-            try:
-                st_idx = statuses.index(current_status) if current_status in statuses else 0
-            except: st_idx = 0
-            
-            new_status = st.selectbox("Статус", statuses, index=st_idx, key=f"st_{order_id}")
-            if new_status != current_status:
-                update_field(order_id, ['status', 'Статус'], new_status)
-
-        st.divider()
-
-        # --- Клієнт та Товар ---
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("**👤 КЛІЄНТ**")
-            name = st.text_input("ПІБ", value=get_val(order, ['client_name', 'ПІБ']), key=f"n_{order_id}")
-            if name != get_val(order, ['client_name', 'ПІБ']):
-                update_field(order_id, ['client_name', 'ПІБ'], name)
-                
-            phone = st.text_input("Телефон", value=get_val(order, ['client_phone', 'Телефон']), key=f"ph_{order_id}")
-            if phone != get_val(order, ['client_phone', 'Телефон']):
-                update_field(order_id, ['client_phone', 'Телефон'], phone)
+        # Рядок 1: ID та Статус
+        h1, h2 = st.columns([3, 1])
+        h1.subheader(f"📦 Замовлення №{oid}")
         
-        with col2:
-            st.markdown("**🛠 ТОВАР**")
-            prod = st.text_input("Назва товару", value=product_name, key=f"p_{order_id}")
-            if prod != product_name:
-                update_field(order_id, ['product_name', 'Товар'], prod)
-                
-            current_sku = st.text_input("Артикул", value=sku, key=f"s_{order_id}")
-            if current_sku != sku:
-                update_field(order_id, ['sku', 'Артикул'], current_sku)
+        status_list = ["Новий", "В роботі", "Готово", "Видано", "Скасовано"]
+        curr_st = get_val(order, ['status', 'Статус'])
+        new_st = h2.selectbox("Статус", status_list, index=status_list.index(curr_st) if curr_st in status_list else 0, key=f"st_{oid}")
+        if new_st != curr_st: update_db(oid, 'status', new_st)
 
-        st.divider()
-
-        # --- БЛОК КРЕСЛЕННЯ (АВТОПОШУК) ---
-        st.markdown("**📂 ТЕХНІЧНА ДОКУМЕНТАЦІЯ**")
+        # Рядок 2: Клієнт (ПІБ, Телефон, Адреса)
+        c1, c2, c3 = st.columns(3)
+        val_name = c1.text_input("Клієнт", value=get_val(order, ['client_name', 'ПІБ']), key=f"n_{oid}")
+        if val_name != get_val(order, ['client_name', 'ПІБ']): update_db(oid, 'client_name', val_name)
         
-        # Шукаємо файл за артикулом або назвою
-        search_term = current_sku if current_sku and current_sku != "---" else prod
-        found_file = find_drawing_file(search_term)
+        val_ph = c2.text_input("Телефон", value=get_val(order, ['client_phone', 'Телефон']), key=f"ph_{oid}")
+        if val_ph != get_val(order, ['client_phone', 'Телефон']): update_db(oid, 'client_phone', val_ph)
         
-        c_draw1, c_draw2 = st.columns([1, 2])
-        with c_draw1:
-            if found_file:
-                st.link_button("📄 Відкрити креслення", found_file['webViewLink'], type="primary", use_container_width=True)
-            elif drawing_link:
-                st.link_button("🏗️ Посилання в базі", drawing_link, use_container_width=True)
-            else:
-                folder_url = f"https://drive.google.com/drive/folders/{DRAWINGS_FOLDER_ID}"
-                st.link_button("📁 Тека креслень", folder_url, use_container_width=True)
+        val_adr = c3.text_input("Адреса", value=get_val(order, ['address', 'Адреса']), key=f"adr_{oid}")
+        if val_adr != get_val(order, ['address', 'Адреса']): update_db(oid, 'address', val_adr)
+
+        # Рядок 3: Товар (Назва, Артикул, Кількість)
+        t1, t2, t3 = st.columns([2, 1, 1])
+        val_prod = t1.text_input("Товар", value=get_val(order, ['product', 'Товар']), key=f"p_{oid}")
+        if val_prod != get_val(order, ['product', 'Товар']): update_db(oid, 'product', val_prod)
         
-        with c_draw2:
-            # Можливість вручну вставити посилання, якщо автопошук не знайшов
-            new_link = st.text_input("Вставити посилання вручну", value=drawing_link, key=f"link_{order_id}", placeholder="https://drive.google.com/...")
-            if new_link != drawing_link:
-                update_field(order_id, ['drawing', 'Креслення', 'link'], new_link)
-            if found_file:
-                st.caption(f"✅ Автоматично знайдено: {found_file['name']}")
+        val_sku = t2.text_input("Артикул", value=get_val(order, ['sku', 'Артикул']), key=f"s_{oid}")
+        if val_sku != get_val(order, ['sku', 'Артикул']): update_db(oid, 'sku', val_sku)
+        
+        val_qty = t3.number_input("К-сть", value=int(get_val(order, ['qty', 'Кількість']) or 1), key=f"q_{oid}")
+        if val_qty != int(get_val(order, ['qty', 'Кількість']) or 1): update_db(oid, 'qty', val_qty)
 
-        st.divider()
+        # Рядок 4: Креслення (Автопошук)
+        st.markdown("---")
+        draw = find_drawing(val_sku if val_sku else val_prod)
+        d_col1, d_col2 = st.columns([1, 2])
+        if draw:
+            d_col1.link_button("📂 Відкрити креслення", draw['webViewLink'], type="primary", use_container_width=True)
+            d_col2.success(f"Знайдено файл: {draw['name']}")
+        else:
+            d_col1.link_button("📁 Тека", f"https://drive.google.com/drive/folders/{DRAWINGS_FOLDER_ID}", use_container_width=True)
+            d_col2.warning("Файл не знайдено за артикулом")
 
-        # --- ФІНАНСИ ---
-        st.markdown("**💰 ФІНАНСОВИЙ ОБЛІК**")
+        # Рядок 5: Гроші (Сума, Аванс, Залишок)
+        st.markdown("---")
         f1, f2, f3 = st.columns(3)
+        curr_tot = float(get_val(order, ['total', 'Сума']) or 0)
+        curr_pre = float(get_val(order, ['prepayment', 'Аванс']) or 0)
         
-        current_total = float(get_val(order, ['total_amount', 'Сума']) or 0)
-        current_pre = float(get_val(order, ['prepayment', 'Аванс']) or 0)
+        val_tot = f1.number_input("Загальна сума", value=curr_tot, key=f"t_{oid}")
+        val_pre = f2.number_input("Аванс", value=curr_pre, key=f"pr_{oid}")
         
-        total = f1.number_input("Загальна сума", value=current_total, key=f"t_{order_id}")
-        pre = f2.number_input("Аванс", value=current_pre, key=f"pr_{order_id}")
+        if val_tot != curr_tot: update_db(oid, 'total', val_tot)
+        if val_pre != curr_pre: update_db(oid, 'prepayment', val_pre)
         
-        if total != current_total:
-            update_field(order_id, ['total_amount', 'Сума'], total)
-        if pre != current_pre:
-            update_field(order_id, ['prepayment', 'Аванс'], pre)
-            
-        balance = total - pre
-        f3.metric("Залишок (доплата)", f"{balance} грн", delta=f"-{pre}" if pre > 0 else None, delta_color="inverse")
+        f3.metric("Доплата", f"{val_tot - val_pre} грн", delta_color="inverse")
 
 def show_order_cards():
-    st.title("📋 Панель управління замовленнями")
-    
-    df_orders = load_csv(ORDERS_CSV_ID)
-    
-    if not df_orders.empty:
-        # Можна додати пошук по всім карткам
-        search = st.text_input("🔍 Швидкий пошук (ПІБ або №)", "")
-        
-        for _, row in df_orders.iterrows():
-            # Проста фільтрація для зручності
-            if search.lower() in str(row).lower():
-                render_order_card(row)
-    else:
-        st.info("Замовлень не знайдено.")
+    # ШВИДКЕ СТВОРЕННЯ (Без зайвих кнопок)
+    with st.expander("➕ НОВЕ ЗАМОВЛЕННЯ", expanded=False):
+        with st.form("quick_create", clear_on_submit=True):
+            c1, c2, c3 = st.columns(3)
+            f_name = c1.text_input("Клієнт")
+            f_phone = c2.text_input("Телефон")
+            f_prod = c3.text_input("Товар / Артикул")
+            
+            f_total = st.number_input("Сума", min_value=0)
+            if st.form_submit_button("ЗБЕРЕГТИ ЗАМОВЛЕННЯ"):
+                df = load_csv(ORDERS_CSV_ID)
+                new_id = int(df['order_id'].max() + 1) if not df.empty else 1001
+                new_row = {
+                    'order_id': new_id, 'client_name': f_name, 'client_phone': f_phone,
+                    'product': f_prod, 'total': f_total, 'status': 'Новий', 'date': datetime.now().strftime("%d.%m.%Y")
+                }
+                df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+                save_csv(ORDERS_CSV_ID, df)
+                st.rerun()
+
+    st.divider()
+
+    # СПИСОК КАРТОК
+    df = load_csv(ORDERS_CSV_ID)
+    if not df.empty:
+        # Сортуємо: нові зверху
+        df = df.sort_values(by='order_id', ascending=False)
+        for _, row in df.iterrows():
+            render_order_card(row)
