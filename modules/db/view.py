@@ -12,16 +12,15 @@ def render_order_card(order):
     
     container = st.container(border=True)
     
-    # Заголовок картки
+    # Головний рядок (ID, Клієнт, Сума)
     c1, c2, c3, c4 = container.columns([0.5, 1, 2, 1])
     c1.markdown(f"**№{oid}**")
     c2.caption(order.get('date', '---'))
     c3.markdown(f"👤 **{order.get('client_name', '---')}**")
     c4.markdown(f"**{order.get('total', 0)} грн**")
 
-    with container.expander("🛠 Деталі замовлення та Креслення"):
-        # 1. Дані клієнта
-        st.markdown("##### 👤 Покупець")
+    with container.expander("🛠 Деталі, Товари та Креслення"):
+        # Дані клієнта
         col_n, col_p = st.columns(2)
         f_name = col_n.text_input("ПІБ", value=str(order.get('client_name', '')), key=f"n_{oid}")
         f_phone = col_p.text_input("Телефон", value=str(order.get('client_phone', '')), key=f"p_{oid}")
@@ -29,57 +28,50 @@ def render_order_card(order):
         
         st.divider()
 
-        # 2. Таблиця Товарів та Артикулів
-        st.markdown("##### 📦 Товари та Артикули")
-        
-        # Десеріалізація даних (якщо збережено як JSON або список)
+        # Таблиця товарів та артикулів
+        st.markdown("##### 📦 Список товарів")
         raw_items = order.get('items_json', '[]')
         try:
             items_data = json.loads(raw_items) if isinstance(raw_items, str) and raw_items.startswith('[') else []
         except:
             items_data = []
             
-        # Якщо даних немає, створюємо структуру з існуючих полів (для міграції)
         if not items_data and order.get('product'):
             items_data = [{"Товар": order.get('product'), "Артикул": order.get('sku', '')}]
 
         df_items = pd.DataFrame(items_data if items_data else [{"Товар": "", "Артикул": ""}])
         
-        # Редактор таблиці з двома колонками
         edited_df = st.data_editor(
             df_items,
             num_rows="dynamic",
             column_config={
-                "Товар": st.column_config.TextColumn("Назва товару", width="large", required=True),
-                "Артикул": st.column_config.TextColumn("Артикул (SKU)", width="medium", required=True),
+                "Товар": st.column_config.TextColumn("Назва товару", width="large"),
+                "Артикул": st.column_config.TextColumn("Артикул (SKU)", width="medium"),
             },
             key=f"ed_{oid}",
             use_container_width=True
         )
 
-        # 3. Креслення (підтягуються автоматично для кожного артикулу в таблиці)
-        st.markdown("##### 📐 Доступні креслення")
+        # Пошук креслень для кожного артикулу
+        st.markdown("##### 📐 Креслення")
         skus = edited_df["Артикул"].dropna().unique()
         
-        if len(skus) > 0:
-            draw_cols = st.columns(len(skus) if len(skus) < 4 else 4)
-            for i, sku in enumerate(skus):
-                if sku.strip():
-                    link = get_file_link_by_name(sku.strip())
-                    with draw_cols[i % 4]:
-                        if link:
-                            st.link_button(f"📄 {sku}", link, use_container_width=True)
-                        else:
-                            st.caption(f"❌ {sku} (немає)")
-        else:
-            st.info("Додайте артикул у таблицю, щоб побачити креслення")
-
+        if len(skus) > 0 and any(skus):
+            draw_cols = st.columns(4)
+            for i, sku in enumerate([s for s in skus if s.strip()]):
+                link = get_file_link_by_name(sku.strip())
+                with draw_cols[i % 4]:
+                    if link:
+                        st.link_button(f"📄 {sku}", link, use_container_width=True)
+                    else:
+                        st.caption(f"❌ {sku}")
+        
         st.divider()
 
-        # 4. Статус та Збереження
-        f_status = st.selectbox("Статус", ["НОВИЙ", "В РОБОТІ", "ГОТОВО", "ВИДАНО"], 
-                               index=0, key=f"st_{oid}")
-        f_total = st.number_input("Загальна сума", value=float(order.get('total', 0)), key=f"tot_{oid}")
+        # Статус та Фінанси
+        col_st, col_tot = st.columns(2)
+        f_status = col_st.selectbox("Статус", ["НОВИЙ", "В РОБОТІ", "ГОТОВО", "ВИДАНО"], key=f"st_{oid}")
+        f_total = col_tot.number_input("Загальна сума", value=float(order.get('total', 0)), key=f"tot_{oid}")
 
         if st.button("💾 Зберегти зміни", key=f"sv_{oid}", type="primary", use_container_width=True):
             df = load_csv(ORDERS_CSV_ID)
@@ -88,22 +80,26 @@ def render_order_card(order):
             
             if idx:
                 curr_idx = idx[0]
-                # Оновлюємо основні поля
                 df.at[curr_idx, 'client_name'] = f_name
                 df.at[curr_idx, 'client_phone'] = f_phone
                 df.at[curr_idx, 'address'] = f_addr
                 df.at[curr_idx, 'status'] = f_status
                 df.at[curr_idx, 'total'] = f_total
+                df.at[curr_idx, 'items_json'] = edited_df.to_json(orient='records', force_ascii=False)
                 
-                # Зберігаємо товари та артикули як JSON рядок в одну колонку
-                items_json = edited_df.to_json(orient='records', force_ascii=False)
-                df.at[curr_idx, 'items_json'] = items_json
-                
-                # Для зворотної сумісності (перший товар)
-                if not edited_df.empty:
-                    df.at[curr_idx, 'product'] = edited_df.iloc[0]['Товар']
-                    df.at[curr_idx, 'sku'] = edited_df.iloc[0]['Артикул']
-
                 save_csv(ORDERS_CSV_ID, df)
-                st.success("Замовлення оновлено!")
+                st.success("Оновлено!")
                 st.rerun()
+
+def show_order_cards():
+    df = load_csv(ORDERS_CSV_ID)
+    if not df.empty:
+        # Сортування: нові зверху
+        id_col = get_id_column_name(df)
+        df[id_col] = pd.to_numeric(df[id_col], errors='coerce')
+        df = df.sort_values(by=id_col, ascending=False)
+        
+        for _, row in df.iterrows():
+            render_order_card(row)
+    else:
+        st.info("Журнал порожній")
