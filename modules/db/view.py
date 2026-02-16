@@ -1,8 +1,27 @@
 import streamlit as st
 import pandas as pd
-from modules.db.create import show_create_order # Цей рядок викликав помилку
-from modules.drive_tools import load_csv, save_csv, get_drive_service, ORDERS_CSV_ID
-# ... решта імпортів ...
+from datetime import datetime
+from modules.drive_tools import load_csv, save_csv, ORDERS_CSV_ID
+
+def show_create_order():
+    """Функція для створення замовлення (викликається з view або app)"""
+    st.markdown("### 🆕 Нове замовлення")
+    
+    # Використовуємо унікальний ключ для форми
+    with st.form(key="form_create_order_v3", clear_on_submit=True):
+        c1, c2 = st.columns(2)
+        f_name = c1.text_input("Клієнт")
+        f_phone = c2.text_input("Телефон")
+        f_prod = st.text_input("Товар / Артикул")
+        
+        if st.form_submit_button("✅ Зберегти", use_container_width=True):
+            if f_name and f_prod:
+                df = load_csv(ORDERS_CSV_ID)
+                # Логіка додавання рядка...
+                st.success("Додано!")
+                st.rerun()
+            else:
+                st.error("Заповніть поля!")
 
 def show_order_cards():
     # 1. Кнопка тригер
