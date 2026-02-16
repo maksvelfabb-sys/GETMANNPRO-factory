@@ -2,15 +2,17 @@ import streamlit as st
 import pandas as pd
 from modules.drive_tools import load_csv, save_csv, ORDERS_CSV_ID
 
-# Функція для пошуку назви колонки ID
+# 1. Функція для пошуку назви колонки ID
 def get_id_column_name(df):
     return next((c for c in ['order_id', 'ID', 'id'] if c in df.columns), 'order_id')
 
+# 2. Рендер однієї картки (експандера)
 def render_order_card(order):
+    # Визначаємо ID
     id_col = get_id_column_name(pd.DataFrame([order]))
     oid = str(order.get(id_col, '0'))
     
-    # Визначаємо колір для статусу (бейдж)
+    # Визначаємо колір для статусу
     status_colors = {
         "Новий": "background-color: #3e9084; color: white;",
         "В роботі": "background-color: #f0ad4e; color: white;",
@@ -48,48 +50,16 @@ def render_order_card(order):
                                   index=status_options.index(status) if status in status_options else 0,
                                   key=f"st_sel_{oid}")
 
-        if st.button("💾 Зберегти зміни", key=f"save_{oid}", use_container_width=True, type="primary"):
+        # Кнопка збереження
+        if st.button("💾 Зберегти зміни", key=f"save_btn_{oid}", use_container_width=True, type="primary"):
             df = load_csv(ORDERS_CSV_ID)
             id_col_save = get_id_column_name(df)
+            
+            # Шукаємо індекс рядка
             indices = df.index[df[id_col_save].astype(str) == oid].tolist()
             
             if indices:
                 idx = indices[0]
-                df.at[idx, 'client_name'] = f_name
-                df.at[idx, 'client_phone'] = f_phone
-                df.at[idx, 'address'] = f_addr
-                df.at[idx, 'product'] = f_prod
-                df.at[idx, 'sku'] = f_sku
-                df.at[idx, 'qty'] = f_qty
-                df.at[idx, 'total'] = f_total
-                df.at[idx, 'prepayment'] = f_pre
-                df.at[idx, 'status'] = new_status
-                save_csv(ORDERS_CSV_ID, df)
-                st.success("Оновлено!")
-                st.rerun()
-
-def show_order_cards():
-    df = load_csv(ORDERS_CSV_ID)
-    if df.empty:
-        st.info("Журнал порожній")
-        return
-
-    # Пошук та сортування
-    id_col = get_id_column_name(df)
-    df[id_col] = pd.to_numeric(df[id_col], errors='coerce')
-    df = df.sort_values(by=id_col, ascending=False)
-
-    search = st.text_input("🔍 Швидкий пошук")
-    if search:
-        mask = df.astype(str).apply(lambda x: x.str.contains(search, case=False)).any(axis=1)
-        df = df[mask]
-
-    for _, row in df.iterrows():
-        render_order_card(row)
-            
-            if indices:
-                idx = indices[0]
-                # Оновлюємо всі поля
                 df.at[idx, 'client_name'] = f_name
                 df.at[idx, 'client_phone'] = f_phone
                 df.at[idx, 'address'] = f_addr
@@ -106,9 +76,28 @@ def show_order_cards():
             else:
                 st.error("Помилка: замовлення не знайдено в базі.")
 
-# --- 3. ГОЛОВНИЙ ЕКРАН ЖУРНАЛУ ---
+# 3. Головна функція для відображення всього журналу
 def show_order_cards():
-    """Відображає список замовлень з фільтрацією"""
     df = load_csv(ORDERS_CSV_ID)
     
     if df.empty:
+        st.info("📦 Журнал замовлень порожній.")
+        return
+
+    # Панель пошуку
+    search = st.text_input("🔍 Швидкий пошук (ПІБ, телефон, товар)")
+    
+    # Сортування (нові зверху)
+    id_col = get_id_column_name(df)
+    if id_col in df.columns:
+        df[id_col] = pd.to_numeric(df[id_col], errors='coerce')
+        df = df.sort_values(by=id_col, ascending=False)
+
+    # Фільтрація пошуку
+    if search:
+        mask = df.astype(str).apply(lambda x: x.str.contains(search, case=False)).any(axis=1)
+        df = df[mask]
+
+    # Вивід карток
+    for _, row in df.iterrows():
+        render_order_card(row)
