@@ -1,13 +1,20 @@
 import streamlit as st
-from modules.db.create import show_create_order  # Імпорт з сусіднього файлу
+import pandas as pd
+from modules.db.create import show_create_order # Цей рядок викликав помилку
+from modules.drive_tools import load_csv, save_csv, get_drive_service, ORDERS_CSV_ID
+# ... решта імпортів ...
 
 def show_order_cards():
-    if st.button("➕ СТВОРИТИ ЗАМОВЛЕННЯ", use_container_width=True):
+    st.title("🏭 GETMANN ERP")
+
+    if st.button("➕ СТВОРИТИ ЗАМОВЛЕННЯ", use_container_width=True, type="primary"):
         st.session_state.creating_now = True
 
+    # Виклик функції з create.py
     if st.session_state.get("creating_now", False):
-        show_create_order()
+        show_create_order() 
 
+    st.divider()
     # Головна кнопка-тригер
     if st.button("➕ СТВОРИТИ ЗАМОВЛЕННЯ", use_container_width=True, type="primary"):
         st.session_state.creating_now = True
