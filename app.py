@@ -1,8 +1,12 @@
 import streamlit as st
-import sys
-import os
-# Додаємо шлях до модулів для коректного імпорту
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from modules.auth import check_auth, login_screen
+from modules.db.view import show_order_cards
+
+if not check_auth():
+    login_screen()
+else:
+    # Виклик має бути ТІЛЬКИ ТУТ і тільки ОДИН раз
+    show_order_cards()
 
 # Імпорт модулів
 from modules.auth import login_screen, logout
@@ -80,5 +84,6 @@ elif menu == "🔐 Адмін-панель":
 
 # 7. Футер (опціонально)
 st.sidebar.caption("GETMANN Pro v3.1 (Stable Build)")
+
 
 
