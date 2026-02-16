@@ -5,20 +5,19 @@ from modules.drive_tools import load_csv, save_csv, get_drive_service, ORDERS_CS
 # ... решта імпортів ...
 
 def show_order_cards():
-    st.title("🏭 GETMANN ERP")
-
-    # Додаємо унікальний key="main_create_btn"
-    if st.button("➕ СТВОРИТИ ЗАМОВЛЕННЯ", 
-                 use_container_width=True, 
-                 type="primary", 
-                 key="main_create_btn"):
+    # 1. Кнопка тригер
+    if st.button("➕ СТВОРИТИ ЗАМОВЛЕННЯ", key="main_btn"):
         st.session_state.creating_now = True
 
-    # Виклик форми з create.py
+    # 2. Форма (викликається ОДИН раз поза циклом)
     if st.session_state.get("creating_now", False):
-        show_create_order() 
+        show_create_order()
 
     st.divider()
+
+    # 3. Список карток
+    df = load_csv(ORDERS_CSV_ID)
+    # ... цикл for ...
 
     # Виклик функції з create.py
     if st.session_state.get("creating_now", False):
