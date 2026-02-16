@@ -5,13 +5,27 @@ from modules.db.view import show_order_cards
 from modules.db.create import show_create_order
 from modules.admin_module import show_admin_panel
 
-# 1. Початкове налаштування сторінки
-# Важливо: st.set_page_config має бути найпершою командою Streamlit
-st.set_page_config(
-    page_title="GETMANN Pro | ERP",
-    layout="wide",
-    page_icon="🏭",
-    initial_sidebar_state="expanded"
+# Налаштування сторінки МАЄ бути першим викликом st.
+st.set_page_config(page_title="GETMANN Pro", layout="wide", page_icon="🏭")
+
+apply_custom_styles()
+
+if not check_auth():
+    login_screen()
+    st.stop()
+
+# Рендер меню
+menu = st.sidebar.radio("Навігація", ["📋 Замовлення", "🔐 Адмін-панель"])
+
+if menu == "📋 Замовлення":
+    st.title("📦 Керування замовленнями")
+    t_view, t_create = st.tabs(["🔎 Журнал", "➕ Створити"])
+    with t_view:
+        show_order_cards()
+    with t_create:
+        show_create_order()
+elif menu == "🔐 Адмін-панель":
+    show_admin_panel()
 )
 
 # 2. Застосування CSS стилів
@@ -79,3 +93,4 @@ elif menu == "🔐 Адмін-панель":
 
 # 7. Футер (опціонально)
 # Тут можна додати системні повідомлення або статус з'єднання
+
