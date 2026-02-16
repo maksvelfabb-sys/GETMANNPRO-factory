@@ -106,3 +106,20 @@ def show_order_cards():
         df = df.dropna(subset=['client_name'], how='all')
         for _, row in df.iterrows():
             render_order_card(row)
+
+def show_order_cards():
+    df = load_csv(ORDERS_CSV_ID)
+    if not df.empty:
+        # Сортуємо за ID (нові зверху), якщо ID числовий
+        id_col = get_id_column_name(df)
+        df[id_col] = pd.to_numeric(df[id_col], errors='coerce')
+        df = df.sort_values(by=id_col, ascending=False)
+        
+        # Рендеримо картки
+        for _, row in df.iterrows():
+            try:
+                render_order_card(row)
+            except Exception as e:
+                st.error(f"Помилка відображення замовлення: {e}")
+    else:
+        st.info("Журнал замовлень порожній.")
