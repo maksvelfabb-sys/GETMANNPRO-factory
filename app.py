@@ -5,7 +5,7 @@ from modules.db.view import show_order_cards
 from modules.db.create import show_create_order
 from modules.admin_module import show_admin_panel
 
-# 1. Налаштування сторінки (ОБОВ'ЯЗКОВО ПЕРШИМ)
+# 1. Налаштування сторінки
 st.set_page_config(
     page_title="GETMANN Pro", 
     layout="wide", 
@@ -13,63 +13,52 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 2. Застосування CSS стилів
+# 2. Стилі
 try:
     apply_custom_styles()
-except Exception as e:
-    st.error(f"Помилка завантаження стилів: {e}")
+except:
+    pass
 
 # 3. Перевірка авторизації
 if not check_auth():
     login_screen()
-    st.stop()  # Зупиняємо виконання, поки користувач не увійде
+    st.stop()
 
-# --- ПІСЛЯ АВТОРИЗАЦІЇ ---
-
-# 4. Дані користувача з сесії
+# 4. Дані користувача
 user = st.session_state.auth
 role = user.get('role', 'Користувач')
-user_display = user.get('login') or user.get('email', 'Невідомий')
 
 # 5. Бічна панель (Sidebar)
 with st.sidebar:
     st.title("🏭 GETMANN Pro")
-    st.markdown(f"**Вітаємо,** `{user_display}`")
-    st.markdown(f"**Роль:** `{role}`")
+    st.markdown(f"**Вітаємо,** `{user.get('login', 'User')}`")
     st.divider()
     
-    # Формування списку меню залежно від ролі
-    menu_options = ["📋 Замовлення"]
+    # ФОРМУЄМО МЕНЮ (Тепер "Створити" — окремий пункт)
+    menu_options = [
+        "📋 Журнал замовлень", 
+        "➕ Створити замовлення"
+    ]
+    
     if role in ["Адмін", "Супер Адмін"]:
         menu_options.append("🔐 Адмін-панель")
     
-    # Використовуємо ключ 'main_nav', щоб уникнути конфліктів ID
     menu = st.radio("Навігація", menu_options, key="main_nav")
     
     st.divider()
-    
-    if st.button("🚪 Вийти з системи", use_container_width=True, key="logout_btn"):
+    if st.button("🚪 Вийти", use_container_width=True):
         logout()
-    
-    st.caption("v3.1 Stable Build (2026)")
 
-# 6. Основна логіка контенту
-if menu == "📋 Замовлення":
-    st.title("📦 Керування замовленнями")
-    
-    # Створюємо вкладки для Журналу та Створення
-    tab_view, tab_create = st.tabs(["🔎 Журнал замовлень", "➕ Створити нове"])
-    
-    with tab_view:
-        show_order_cards()
-        
-    with tab_create:
-        show_create_order()
+# 6. Основна логіка контенту (БЕЗ ВКЛАДОК)
+if menu == "📋 Журнал замовлень":
+    st.title("🔎 Журнал замовлень")
+    show_order_cards()
+
+elif menu == "➕ Створити замовлення":
+    st.title("📝 Нове замовлення")
+    show_create_order() # Викликаємо модуль створення тут
 
 elif menu == "🔐 Адмін-панель":
     st.title("🔐 Адміністративна панель")
     show_admin_panel()
 
-# 7. Системний футер (опціонально)
-st.sidebar.markdown("---")
-st.sidebar.info(f"Логін: {user_display}")
