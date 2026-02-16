@@ -1,10 +1,22 @@
 import streamlit as st
-import pandas as pd
-import json
-from modules.drive_tools import load_csv, save_csv, ORDERS_CSV_ID, get_file_link_by_name
 
-def get_id_column_name(df):
-    return next((c for c in ['order_id', 'ID', 'id'] if c in df.columns), 'order_id')
+# Цей блок допоможе вивести помилку на екран, якщо вона є
+try:
+    from modules.auth import check_auth, login_screen, logout
+    from modules.styles import apply_custom_styles
+    from modules.db.view import show_order_cards
+    from modules.db.create import show_create_order
+    from modules.admin_module import show_admin_panel
+except Exception as e:
+    st.error(f"Помилка завантаження модулів: {e}")
+    st.stop()
+
+# Далі ваш стандартний код...
+st.set_page_config(page_title="GETMANN Pro", layout="wide")
+
+if not check_auth():
+    login_screen()
+    st.stop()
 
 def render_order_card(order):
     id_col = get_id_column_name(pd.DataFrame([order]))
@@ -117,3 +129,4 @@ def render_order_card(order):
                 save_csv(ORDERS_CSV_ID, df)
                 st.success(f"Замовлення №{oid} оновлено! Сума: {calculated_total} грн")
                 st.rerun()
+
