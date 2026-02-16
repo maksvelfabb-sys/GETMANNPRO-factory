@@ -1,6 +1,6 @@
 import streamlit as st
 
-# Налаштування сторінки (має бути першою командою Streamlit)
+# 1. Налаштування сторінки
 st.set_page_config(
     page_title="GETMANN Pro Factory",
     page_icon="🏭",
@@ -8,7 +8,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Блок безпечного імпорту модулів
+# 2. Блок безпечного імпорту
 try:
     from modules.auth import check_auth, login_screen, logout
     from modules.styles import apply_custom_styles
@@ -17,32 +17,41 @@ try:
     from modules.admin_module import show_admin_panel
 except ImportError as e:
     st.error(f"❌ Критична помилка імпорту: {e}")
-    st.info("Перевірте наявність файлів у папці modules та файлів __init__.py")
     st.stop()
 
 def main():
-    # Пристосування стилів (логотипи, кольори)
+    # Застосовуємо стилі
     apply_custom_styles()
 
-    # Перевірка авторизації
+    # ПЕРЕВІРКА АВТОРИЗАЦІЇ
     if not check_auth():
         login_screen()
         return
 
-    # Бічна панель (Sidebar)
-    st.sidebar.title(f"🏭 GETMANN Pro")
-    st.sidebar.write(f"Користувач: `{st.session_state.get('user_name', 'maksvel.fabb')}`")
+    # Отримуємо дані користувача (якщо їх немає - ставимо порожній рядок)
+    # Важливо: auth.py має зберігати email при логіні!
+    u_email = st.session_state.get('user_email', '').lower().strip()
+    u_role = st.session_state.get('user_role', '').lower()
+    u_name = st.session_state.get('user_name', 'Користувач')
+
+    # БІЧНА ПАНЕЛЬ
+    st.sidebar.title("🏭 GETMANN Pro")
+    st.sidebar.info(f"👤 {u_name}")
     
-    menu = st.sidebar.radio(
-        "Навігація",
-        ["📦 Журнал замовлень", "➕ Створити замовлення", "⚙️ Адмін-панель"]
-    )
+    # Список пунктів меню залежно від ролі
+    menu_options = ["📦 Журнал замовлень", "➕ Створити замовлення"]
+    
+    # Додаємо адмін-панель тільки якщо це ви або адмін
+    if u_email == "maksvel.fabb@gmail.com" or u_role == "admin":
+        menu_options.append("⚙️ Адмін-панель")
+
+    menu = st.sidebar.radio("Навігація", menu_options)
 
     st.sidebar.divider()
     if st.sidebar.button("🚪 Вийти", width="stretch"):
         logout()
 
-    # Основна логіка перемикання екранів
+    # ОСНОВНА ЛОГІКА
     if menu == "📦 Журнал замовлень":
         st.title("📦 Журнал замовлень")
         show_order_cards()
@@ -51,20 +60,13 @@ def main():
         st.title("➕ Створення нового замовлення")
         show_create_order()
 
-   elif menu == "⚙️ Адмін-панель":
+    elif menu == "⚙️ Адмін-панель":
         st.title("⚙️ Адміністрування")
-        
-        # Отримуємо дані користувача із сесії
-        user_email = st.session_state.get('user_email', '')
-        user_role = st.session_state.get('user_role', '')
-
-        # ПРЯМА ПЕРЕВІРКА ДЛЯ СУПЕР-АДМІНА
-        if user_email == "maksvel.fabb@gmail.com" or user_role == "admin":
+        # Подвійна перевірка безпеки
+        if u_email == "maksvel.fabb@gmail.com" or u_role == "admin":
             show_admin_panel()
         else:
-            st.error(f"Доступ заборонено! Ваш email: {user_email}")
-            st.warning("Зверніться до головного адміністратора для отримання прав.")
+            st.error("Недостатньо прав для доступу.")
 
 if __name__ == "__main__":
     main()
-
