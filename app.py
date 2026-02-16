@@ -5,28 +5,67 @@ from modules.db.view import show_order_cards
 from modules.db.create import show_create_order
 from modules.admin_module import show_admin_panel
 
-# Налаштування сторінки МАЄ бути першим викликом st.
-st.set_page_config(page_title="GETMANN Pro", layout="wide", page_icon="🏭")
+# 1. Налаштування сторінки (ЗАВЖДИ ПЕРШИМ)
+st.set_page_config(
+    page_title="GETMANN Pro", 
+    layout="wide", 
+    page_icon="🏭",
+    initial_sidebar_state="expanded"
+)
 
-apply_custom_styles()
+# 2. Застосування стилів
+try:
+    apply_custom_styles()
+except Exception as e:
+    st.error(f"Помилка завантаження стилів: {e}")
 
+# 3. Перевірка авторизації
 if not check_auth():
     login_screen()
-    st.stop()
+    st.stop()  # Зупиняємо код, поки користувач не увійде
 
-# Рендер меню
-menu = st.sidebar.radio("Навігація", ["📋 Замовлення", "🔐 Адмін-панель"])
+# 4. Дані користувача (якщо авторизовано)
+user = st.session_state.auth
+role = user.get('role', 'Користувач')
+user_display = user.get('login') or user.get('email', 'Невідомий')
 
+# 5. Бічна панель (Sidebar)
+with st.sidebar:
+    st.title("🏭 GETMANN Pro")
+    st.markdown(f"**Вітаємо,** `{user_display}`")
+    st.markdown(f"**Роль:** `{role}`")
+    st.divider()
+    
+    # Формування списку меню залежно від ролі
+    menu_options = ["📋 Замовлення"]
+    if role in ["Адмін", "Супер Адмін"]:
+        menu_options.append("🔐 Адмін-панель")
+    
+    menu = st.radio("Навігація", menu_options)
+    
+    st.divider()
+    
+    if st.button("🚪 Вийти з системи", use_container_width=True):
+        logout()
+    
+    st.caption("v3.1 Stable Build (2026)")
+
+# 6. Основна логіка контенту
 if menu == "📋 Замовлення":
     st.title("📦 Керування замовленнями")
-    t_view, t_create = st.tabs(["🔎 Журнал", "➕ Створити"])
-    with t_view:
+    
+    # Використання вкладок для уникнення Duplicate ID
+    tab_view, tab_create = st.tabs(["🔎 Журнал замовлень", "➕ Створити нове"])
+    
+    with tab_view:
         show_order_cards()
-    with t_create:
+        
+    with tab_create:
         show_create_order()
+
 elif menu == "🔐 Адмін-панель":
+    st.title("🔐 Адміністративна панель")
     show_admin_panel()
-)
 
 # 2. Застосування CSS стилів
 # Ця функція завантажує ваші кастомні налаштування дизайну карток
@@ -93,4 +132,5 @@ elif menu == "🔐 Адмін-панель":
 
 # 7. Футер (опціонально)
 # Тут можна додати системні повідомлення або статус з'єднання
+
 
