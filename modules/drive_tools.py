@@ -63,3 +63,20 @@ def get_file_link_by_name(file_name):
     except Exception as e:
         print(f"Помилка пошуку: {e}")
     return None
+
+def get_file_link_by_name(file_name):
+    """Шукає файл на Google Drive за артикулом та повертає посилання"""
+    try:
+        # drive_service має бути ініціалізований у вашому drive_tools.py
+        query = f"name contains '{file_name}' and trashed = false"
+        results = drive_service.files().list(
+            q=query, 
+            fields="files(id, name, webViewLink)",
+            pageSize=1
+        ).execute()
+        files = results.get('files', [])
+        if files:
+            return files[0]['webViewLink']
+    except Exception as e:
+        print(f"Помилка Drive API: {e}")
+    return None
