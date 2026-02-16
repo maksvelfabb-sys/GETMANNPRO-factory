@@ -1,7 +1,13 @@
 import streamlit as st
 import pandas as pd
 import json
-from modules.drive_tools import load_csv, save_csv, ORDERS_CSV_ID, get_file_link_by_name
+
+# Безпечний імпорт: якщо функції немає, програма не "впаде"
+try:
+    from modules.drive_tools import load_csv, save_csv, ORDERS_CSV_ID, get_file_link_by_name
+except ImportError:
+    st.error("Помилка: Функція get_file_link_by_name не знайдена в drive_tools.py")
+    def get_file_link_by_name(x): return None
 
 def get_id_column_name(df):
     return next((c for c in ['order_id', 'ID', 'id'] if c in df.columns), 'order_id')
