@@ -15,27 +15,34 @@ try:
     from modules.db.create import show_create_order
     from modules.admin_module import show_admin_panel
 except ImportError as e:
-    st.error(f"❌ Помилка імпорту: {e}")
+    st.error(f"❌ Помилка імпорту модулів: {e}")
     st.stop()
 
 def main():
     apply_custom_styles()
 
+    # Перевірка, чи користувач авторизований
     if not check_auth():
         login_screen()
         return
 
-    # --- ТИМЧАСОВА ДІАГНОСТИКА (можна видалити потім) ---
-    # st.sidebar.write(st.session_state) 
-    # --------------------------------------------------
+    # --- ЛОГІКА ВИЗНАЧЕННЯ СУПЕР-АДМІНА ---
+    # Перевіряємо всі можливі ключі, куди auth.py міг записати ваш email
+    session_keys = st.session_state.keys()
+    u_email = ""
+    for key in ['user_email', 'email', 'login', 'user']:
+        if key in session_keys:
+            u_email = str(st.session_state[key]).lower().strip()
+            if "@" in u_email: # знайшли щось схоже на email
+                break
 
-    # Отримуємо дані. Якщо email порожній, пробуємо отримати login (іноді в auth.py так називають)
-    u_email = str(st.session_state.get('user_email', st.session_state.get('login', ''))).lower().strip()
-    u_role = str(st.session_state.get('user_role', '')).lower()
-    u_name = st.session_state.get('user_name', 'Адмін')
-
-    # ВИЗНАЧЕННЯ ПРАВ (Супер-адмін)
-    is_super_admin = (u_email == "maksvel.fabb@gmail.com") or (u_role == "admin")
+    # Пряма перевірка вашого доступу
+    is_super_admin = (u_email == "maksvel.fabb@gmail.com")
+    
+    # Якщо email не знайшовся в сесії, але ви пройшли check_auth, 
+    # можливо, auth.py використовує іншу назву. 
+    # Для тесту можна розкоментувати рядок нижче, щоб побачити ключі:
+    # st.sidebar.write(list(st.session_state.keys()))
 
     # Формування меню
     menu_options = ["📦 Журнал замовлень", "➕ Створити замовлення"]
@@ -44,7 +51,7 @@ def main():
 
     # Бічна панель
     st.sidebar.title("🏭 GETMANN Pro")
-    st.sidebar.success(f"✅ Ви увійшли як: {u_name}")
+    st.sidebar.info(f"👤 Ви увійшли як: {u_email if u_email else 'Співробітник'}")
     
     menu = st.sidebar.radio("Навігація", menu_options)
 
@@ -63,10 +70,10 @@ def main():
 
     elif menu == "⚙️ Адмін-панель":
         if is_super_admin:
-            st.title("⚙️ Адміністрування системи")
+            st.title("⚙️ Адміністрування")
             show_admin_panel()
         else:
-            st.error("Доступ обмежено.")
+            st.error("Доступ заблоковано. Недостатньо прав.")
 
 if __name__ == "__main__":
     main()
