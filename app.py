@@ -5,41 +5,29 @@ from modules.db.view import show_order_cards
 from modules.db.create import show_create_order
 from modules.admin_module import show_admin_panel
 
-# 1. Налаштування сторінки
-st.set_page_config(
-    page_title="GETMANN Pro", 
-    layout="wide", 
-    page_icon="🏭",
-    initial_sidebar_state="expanded"
-)
+# Налаштування сторінки
+st.set_page_config(page_title="GETMANN Pro", layout="wide", page_icon="🏭")
 
-# 2. Стилі
+# Стилі та Авторизація
 try:
     apply_custom_styles()
 except:
     pass
 
-# 3. Перевірка авторизації
 if not check_auth():
     login_screen()
     st.stop()
 
-# 4. Дані користувача
 user = st.session_state.auth
 role = user.get('role', 'Користувач')
 
-# 5. Бічна панель (Sidebar)
+# Бічна панель
 with st.sidebar:
     st.title("🏭 GETMANN Pro")
-    st.markdown(f"**Вітаємо,** `{user.get('login', 'User')}`")
+    st.markdown(f"**Користувач:** `{user.get('login')}`")
     st.divider()
     
-    # ФОРМУЄМО МЕНЮ (Без іконок)
-    menu_options = [
-        "Журнал замовлень", 
-        "Створити замовлення"
-    ]
-    
+    menu_options = ["Журнал замовлень", "Створити замовлення"]
     if role in ["Адмін", "Супер Адмін"]:
         menu_options.append("Адмін-панель")
     
@@ -49,7 +37,7 @@ with st.sidebar:
     if st.button("🚪 Вийти", use_container_width=True):
         logout()
 
-# 6. Основна логіка контенту (Умови мають точно збігатися з текстом у menu_options)
+# Логіка контенту
 if menu == "Журнал замовлень":
     st.title("🔎 Журнал замовлень")
     show_order_cards()
