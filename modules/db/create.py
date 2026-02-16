@@ -3,11 +3,8 @@ import pandas as pd
 from datetime import datetime
 from modules.drive_tools import load_csv, save_csv, ORDERS_CSV_ID
 
-def show_create_order_form():
-    """Функція малювання форми створення нового замовлення"""
-    with st.container(border=True):
-        st.markdown("### 🆕 Створення нового замовлення")
-        
+def show_create_order():  # Назва має бути точно такою
+    st.markdown("### 🆕 Створення нового замовлення")
         with st.form("new_order_form", clear_on_submit=True):
             col1, col2, col3 = st.columns(3)
             f_name = col1.text_input("Клієнт (ПІБ)")
@@ -24,6 +21,12 @@ def show_create_order_form():
             f_pre = col8.number_input("Аванс (грн)", min_value=0.0)
             
             btn_save, btn_cancel = st.columns(2)
+
+                   submitted = st.form_submit_button("✅ ДОДАТИ")
+        if submitted:
+            # Логіка збереження...
+            st.session_state.creating_now = False
+            st.rerun()
             
             if btn_save.form_submit_button("✅ ЗБЕРЕГТИ ТА ДОДАТИ", use_container_width=True):
                 if not f_name or not f_prod:
