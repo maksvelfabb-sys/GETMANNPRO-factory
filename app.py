@@ -5,6 +5,8 @@ from modules.db.view import show_order_cards
 from modules.db.create import show_create_order
 from modules.admin_module import show_admin_panel
 
+st.set_page_config(page_title="GETMANN Pro", layout="wide")
+
 # 1. Початкове налаштування сторінки (ЗАВЖДИ МАЄ БУТИ ПЕРШИМ)
 st.set_page_config(
     page_title="GETMANN Pro",
@@ -69,3 +71,4 @@ if menu == "📋 Замовлення":
 
 elif menu == "🔐 Адмін-панель":
     show_admin_panel()
+
