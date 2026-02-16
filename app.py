@@ -51,13 +51,20 @@ def main():
         st.title("➕ Створення нового замовлення")
         show_create_order()
 
-    elif menu == "⚙️ Адмін-панель":
+   elif menu == "⚙️ Адмін-панель":
         st.title("⚙️ Адміністрування")
-        # Перевірка прав адміна (якщо роль прописана в сесії)
-        if st.session_state.get('user_role') == 'admin' or st.session_state.get('user_email') == 'maksvel.fabb@gmail.com':
+        
+        # Отримуємо дані користувача із сесії
+        user_email = st.session_state.get('user_email', '')
+        user_role = st.session_state.get('user_role', '')
+
+        # ПРЯМА ПЕРЕВІРКА ДЛЯ СУПЕР-АДМІНА
+        if user_email == "maksvel.fabb@gmail.com" or user_role == "admin":
             show_admin_panel()
         else:
-            st.warning("У вас немає прав доступу до цього розділу.")
+            st.error(f"Доступ заборонено! Ваш email: {user_email}")
+            st.warning("Зверніться до головного адміністратора для отримання прав.")
 
 if __name__ == "__main__":
     main()
+
