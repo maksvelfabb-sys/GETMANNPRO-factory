@@ -4,11 +4,10 @@ import streamlit as st
 st.set_page_config(
     page_title="GETMANN Pro Factory",
     page_icon="🏭",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
-# 2. Блок безпечного імпорту
+# 2. Імпорт модулів
 try:
     from modules.auth import check_auth, login_screen, logout
     from modules.styles import apply_custom_styles
@@ -16,57 +15,58 @@ try:
     from modules.db.create import show_create_order
     from modules.admin_module import show_admin_panel
 except ImportError as e:
-    st.error(f"❌ Критична помилка імпорту: {e}")
+    st.error(f"❌ Помилка імпорту: {e}")
     st.stop()
 
 def main():
-    # Застосовуємо стилі
     apply_custom_styles()
 
-    # ПЕРЕВІРКА АВТОРИЗАЦІЇ
     if not check_auth():
         login_screen()
         return
 
-    # Отримуємо дані користувача (якщо їх немає - ставимо порожній рядок)
-    # Важливо: auth.py має зберігати email при логіні!
-    u_email = st.session_state.get('user_email', '').lower().strip()
-    u_role = st.session_state.get('user_role', '').lower()
-    u_name = st.session_state.get('user_name', 'Користувач')
+    # --- ТИМЧАСОВА ДІАГНОСТИКА (можна видалити потім) ---
+    # st.sidebar.write(st.session_state) 
+    # --------------------------------------------------
 
-    # БІЧНА ПАНЕЛЬ
-    st.sidebar.title("🏭 GETMANN Pro")
-    st.sidebar.info(f"👤 {u_name}")
-    
-    # Список пунктів меню залежно від ролі
+    # Отримуємо дані. Якщо email порожній, пробуємо отримати login (іноді в auth.py так називають)
+    u_email = str(st.session_state.get('user_email', st.session_state.get('login', ''))).lower().strip()
+    u_role = str(st.session_state.get('user_role', '')).lower()
+    u_name = st.session_state.get('user_name', 'Адмін')
+
+    # ВИЗНАЧЕННЯ ПРАВ (Супер-адмін)
+    is_super_admin = (u_email == "maksvel.fabb@gmail.com") or (u_role == "admin")
+
+    # Формування меню
     menu_options = ["📦 Журнал замовлень", "➕ Створити замовлення"]
-    
-    # Додаємо адмін-панель тільки якщо це ви або адмін
-    if u_email == "maksvel.fabb@gmail.com" or u_role == "admin":
+    if is_super_admin:
         menu_options.append("⚙️ Адмін-панель")
 
+    # Бічна панель
+    st.sidebar.title("🏭 GETMANN Pro")
+    st.sidebar.success(f"✅ Ви увійшли як: {u_name}")
+    
     menu = st.sidebar.radio("Навігація", menu_options)
 
     st.sidebar.divider()
     if st.sidebar.button("🚪 Вийти", width="stretch"):
         logout()
 
-    # ОСНОВНА ЛОГІКА
+    # ЛОГІКА ЕКРАНІВ
     if menu == "📦 Журнал замовлень":
         st.title("📦 Журнал замовлень")
         show_order_cards()
 
     elif menu == "➕ Створити замовлення":
-        st.title("➕ Створення нового замовлення")
+        st.title("➕ Нове замовлення")
         show_create_order()
 
     elif menu == "⚙️ Адмін-панель":
-        st.title("⚙️ Адміністрування")
-        # Подвійна перевірка безпеки
-        if u_email == "maksvel.fabb@gmail.com" or u_role == "admin":
+        if is_super_admin:
+            st.title("⚙️ Адміністрування системи")
             show_admin_panel()
         else:
-            st.error("Недостатньо прав для доступу.")
+            st.error("Доступ обмежено.")
 
 if __name__ == "__main__":
     main()
