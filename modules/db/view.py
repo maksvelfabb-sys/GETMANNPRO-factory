@@ -2,102 +2,100 @@ import streamlit as st
 import pandas as pd
 from modules.drive_tools import load_csv, save_csv, ORDERS_CSV_ID
 
-# 1. Функція для пошуку назви колонки ID
 def get_id_column_name(df):
     return next((c for c in ['order_id', 'ID', 'id'] if c in df.columns), 'order_id')
 
-# 2. Рендер однієї картки (експандера)
 def render_order_card(order):
-    # Визначаємо ID
     id_col = get_id_column_name(pd.DataFrame([order]))
     oid = str(order.get(id_col, '0'))
     
-    # Визначаємо колір для статусу
+    # Кольори статусів як на скріншоті
     status_colors = {
-        "Новий": "background-color: #3e9084; color: white;",
-        "В роботі": "background-color: #f0ad4e; color: white;",
-        "Готово": "background-color: #5cb85c; color: white;",
-        "Видано": "background-color: #5bc0de; color: white;",
-        "Скасовано": "background-color: #d9534f; color: white;"
+        "Новий": "#3e9084",
+        "ПЕРЕДАНО В ДОСТАВКУ": "#5a5a8a",
+        "В ДОРОЗІ": "#5a5a8a",
+        "Готово": "#5cb85c"
     }
-    status = str(order.get('status', 'Новий'))
-    current_style = status_colors.get(status, "background-color: #6c757d; color: white;")
+    st_val = str(order.get('status', 'Новий')).upper()
+    st_color = status_colors.get(st_val, "#6c757d")
 
-    # Заголовок для експандера
-    header_label = f"📦 №{oid} | {order.get('product', '---')} | {order.get('date', '---')} | {order.get('client_name', '---')} | {order.get('total', 0)} грн"
+    # Формуємо складний HTML-заголовок для імітації табличного рядка
+    # Використовуємо іконки та колонки
+    header_html = f"""
+    <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; font-size: 14px; color: white;">
+        <div style="flex: 0.5;"><b>{oid}</b></div>
+        <div style="flex: 1; color: #44c2f1;">🛒 adaptex.ua</div>
+        <div style="flex: 1; font-size: 12px; color: #aaa;">{order.get('date', 'Сьогодні')}</div>
+        <div style="flex: 1;"><span style="background-color: {st_color}; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 10px;">{st_val}</span></div>
+        <div style="flex: 1.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">👤 {order.get('client_name', '---')}</div>
+        <div style="flex: 1.5; color: #44c2f1;">{order.get('product', '---')}</div>
+        <div style="flex: 1; text-align: right; font-weight: bold;">{order.get('total', 0)} грн</div>
+    </div>
+    """
 
-    with st.expander(header_label):
-        st.markdown(f"<span style='{current_style} padding: 2px 10px; border-radius: 5px; font-weight: bold;'>{status.upper()}</span>", unsafe_allow_html=True)
+    with st.expander(header_html, expanded=False):
+        # Внутрішня частина (деталі замовлення як на image_9a108c.png)
+        st.markdown(f"### 📦 Деталі замовлення №{oid}")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.write("**Покупець**")
+            f_name = st.text_input("ПІБ", value=str(order.get('client_name', '')), key=f"n_{oid}")
+            f_phone = st.text_input("Телефон", value=str(order.get('client_phone', '')), key=f"p_{oid}")
+            st.button("📞 Подзвонити", key=f"call_{oid}", use_container_width=True)
+
+        with col2:
+            st.write("**Доставка**")
+            f_addr = st.text_area("Адреса доставки", value=str(order.get('address', '')), key=f"ad_{oid}", height=68)
+            f_sku = st.text_input("Артикул товару", value=str(order.get('sku', '')), key=f"sk_{oid}")
+
+        with col3:
+            st.write("**Оплата та Статус**")
+            f_total = st.number_input("Сума замовлення", value=float(order.get('total', 0)), key=f"t_{oid}")
+            status_options = ["Новий", "ПЕРЕДАНО В ДОСТАВКУ", "В ДОРОЗІ", "Готово", "Скасовано"]
+            f_status = st.selectbox("Статус замовлення", status_options, 
+                                   index=status_options.index(st_val) if st_val in status_options else 0,
+                                   key=f"st_{oid}")
+
         st.divider()
         
-        # Поля редагування
-        c1, c2, c3 = st.columns(3)
-        f_name = c1.text_input("Клієнт", value=str(order.get('client_name', '')), key=f"n_{oid}")
-        f_phone = c2.text_input("Телефон", value=str(order.get('client_phone', '')), key=f"ph_{oid}")
-        f_addr = c3.text_input("Адреса", value=str(order.get('address', '')), key=f"ad_{oid}")
-
-        t1, t2, t3 = st.columns([2, 1, 1])
-        f_prod = t1.text_input("Товар", value=str(order.get('product', '')), key=f"p_{oid}")
-        f_sku = t2.text_input("Артикул", value=str(order.get('sku', '')), key=f"s_{oid}")
-        f_qty = t3.number_input("К-сть", value=int(order.get('qty', 1)), key=f"q_{oid}")
-
-        m1, m2, m3 = st.columns(3)
-        f_total = m1.number_input("Сума", value=float(order.get('total', 0)), key=f"tot_{oid}")
-        f_pre = m2.number_input("Аванс", value=float(order.get('prepayment', 0)), key=f"pre_{oid}")
-        
-        status_options = ["Новий", "В роботі", "Готово", "Видано", "Скасовано"]
-        new_status = m3.selectbox("Статус", status_options, 
-                                  index=status_options.index(status) if status in status_options else 0,
-                                  key=f"st_sel_{oid}")
-
-        # Кнопка збереження
-        if st.button("💾 Зберегти зміни", key=f"save_btn_{oid}", use_container_width=True, type="primary"):
+        # Кнопка збереження змін
+        if st.button("💾 Зберегти зміни в базі", key=f"save_{oid}", use_container_width=True, type="primary"):
             df = load_csv(ORDERS_CSV_ID)
-            id_col_save = get_id_column_name(df)
+            id_col_db = get_id_column_name(df)
+            idx_list = df.index[df[id_col_db].astype(str) == oid].tolist()
             
-            # Шукаємо індекс рядка
-            indices = df.index[df[id_col_save].astype(str) == oid].tolist()
-            
-            if indices:
-                idx = indices[0]
+            if idx_list:
+                idx = idx_list[0]
                 df.at[idx, 'client_name'] = f_name
                 df.at[idx, 'client_phone'] = f_phone
                 df.at[idx, 'address'] = f_addr
-                df.at[idx, 'product'] = f_prod
                 df.at[idx, 'sku'] = f_sku
-                df.at[idx, 'qty'] = f_qty
                 df.at[idx, 'total'] = f_total
-                df.at[idx, 'prepayment'] = f_pre
-                df.at[idx, 'status'] = new_status
-                
+                df.at[idx, 'status'] = f_status
                 save_csv(ORDERS_CSV_ID, df)
-                st.success(f"Замовлення №{oid} оновлено!")
+                st.success("Дані оновлено!")
                 st.rerun()
-            else:
-                st.error("Помилка: замовлення не знайдено в базі.")
 
-# 3. Головна функція для відображення всього журналу
 def show_order_cards():
     df = load_csv(ORDERS_CSV_ID)
-    
     if df.empty:
-        st.info("📦 Журнал замовлень порожній.")
+        st.info("Журнал замовлень порожній")
         return
 
-    # Панель пошуку
-    search = st.text_input("🔍 Швидкий пошук (ПІБ, телефон, товар)")
+    # Швидкий пошук у стилі CRM
+    search_q = st.text_input("🔍 Швидкий пошук замовлень...", placeholder="Введіть ПІБ, номер або товар")
     
-    # Сортування (нові зверху)
+    # Сортування
     id_col = get_id_column_name(df)
-    if id_col in df.columns:
-        df[id_col] = pd.to_numeric(df[id_col], errors='coerce')
-        df = df.sort_values(by=id_col, ascending=False)
+    df[id_col] = pd.to_numeric(df[id_col], errors='coerce')
+    df = df.sort_values(by=id_col, ascending=False)
 
-    # Фільтрація пошуку
-    if search:
-        mask = df.astype(str).apply(lambda x: x.str.contains(search, case=False)).any(axis=1)
+    if search_q:
+        mask = df.astype(str).apply(lambda x: x.str.contains(search_q, case=False)).any(axis=1)
         df = df[mask]
 
-    # Вивід карток
+    # Рендер карток
     for _, row in df.iterrows():
         render_order_card(row)
