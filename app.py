@@ -1,7 +1,6 @@
 import streamlit as st
 import sys
 import os
-
 # Додаємо шлях до модулів для коректного імпорту
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -81,4 +80,5 @@ elif menu == "🔐 Адмін-панель":
 
 # 7. Футер (опціонально)
 st.sidebar.caption("GETMANN Pro v3.1 (Stable Build)")
+
 
