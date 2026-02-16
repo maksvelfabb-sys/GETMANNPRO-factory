@@ -50,3 +50,16 @@ def save_csv(file_id, df):
     except Exception as e:
         st.error(f"Помилка запису: {e}")
         return False
+
+def get_file_link_by_name(file_name):
+    """Шукає файл на Drive за назвою та повертає посилання"""
+    try:
+        # Пошук файлу, який називається як артикул (наприклад 1002.pdf або 1002.jpg)
+        query = f"name contains '{file_name}' and trashed = false"
+        results = drive_service.files().list(q=query, fields="files(id, name, webViewLink)").execute()
+        files = results.get('files', [])
+        if files:
+            return files[0]['webViewLink'] # Повертає посилання на перший знайдений файл
+    except Exception as e:
+        print(f"Помилка пошуку: {e}")
+    return None
