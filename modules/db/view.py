@@ -107,3 +107,36 @@ def render_order_card(order):
 
             if c_save.button("💾 Зберегти", key=f"sv_{oid}", type="primary", width="stretch"):
                 # Завантаження поточної бази для оновлення
+                df_all = load_csv(ORDERS_CSV_ID)
+                # Усунення помилок типів (dtype warnings)
+                for col in ['client_name', 'client_phone', 'address', 'status']:
+                    if col in df_all.columns:
+                        df_all[col] = df_all[col].astype(str)
+                
+                idx = df_all.index[df_all[id_col].astype(str) == oid].tolist()
+                if idx:
+                    i = idx[0]
+                    df_all.at[i, 'client_name'] = f_name
+                    df_all.at[i, 'client_phone'] = str(f_phone)
+                    df_all.at[i, 'address'] = f_addr
+                    df_all.at[i, 'status'] = f_status
+                    df_all.at[i, 'total'] = calc_total
+                    df_all.at[i, 'items_json'] = edited_df.to_json(orient='records', force_ascii=False)
+                    
+                    if save_csv(ORDERS_CSV_ID, df_all):
+                        st.success("Дані оновлено!")
+                        st.rerun()
+
+def show_order_cards():
+    """Головна функція для відображення журналу"""
+    df = load_csv(ORDERS_CSV_ID)
+    if not df.empty:
+        # Видаляємо порожні рядки, де немає імені клієнта
+        df = df.dropna(subset=['client_name'], how='all')
+        for _, row in df.iterrows():
+            try:
+                render_order_card(row)
+            except Exception as e:
+                st.error(f"Помилка в замовленні: {e}")
+    else:
+        st.info("Замовлень поки що немає.")
