@@ -4,11 +4,12 @@ from datetime import datetime
 from modules.drive_tools import load_csv, save_csv, ORDERS_CSV_ID
 
 def show_create_order():
-    """Малює форму створення нового замовлення"""
     with st.container(border=True):
         st.markdown("### 🆕 Створення замовлення")
+        form_key = f"new_order_form_{datetime.now().strftime('%H%M%S')}"
         
-        # ВИПРАВЛЕНО: Додано унікальний key для форми, щоб уникнути StreamlitDuplicateElementId
+        with st.form(key=form_key, clear_on_submit=True):
+        
         with st.form(key="new_order_creation_form", clear_on_submit=True):
             col1, col2, col3 = st.columns(3)
             f_name = col1.text_input("Клієнт (ПІБ)")
@@ -18,8 +19,7 @@ def show_create_order():
             col4, col5, col6 = st.columns([2, 1, 1])
             f_prod = col4.text_input("Назва товару")
             f_sku = col5.text_input("Артикул")
-            # ВИПРАВЛЕНО: Переконайтеся, що кількість - це ціле число
-            f_qty = col6.number_input("Кількість", min_value=1, value=1, step=1)
+                        f_qty = col6.number_input("Кількість", min_value=1, value=1, step=1)
             
             col7, col8 = st.columns(2)
             f_total = col7.number_input("Сума (грн)", min_value=0.0, step=100.0)
