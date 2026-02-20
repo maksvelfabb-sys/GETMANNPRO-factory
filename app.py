@@ -15,6 +15,9 @@ try:
     from modules.db.view import show_order_cards
     from modules.db.create import show_create_order
     from modules.admin_module import show_admin_panel
+    # Припускаємо, що ці функції існують або будуть створені в цих модулях:
+    # from modules.materials import show_materials
+    # from modules.drawings import show_drawings_catalog
 except ImportError as e:
     st.error(f"❌ Помилка імпорту модулів: {e}")
     st.stop()
@@ -40,10 +43,10 @@ def main():
     # ПЕРЕВІРКА ПРАВ
     is_super_admin = (u_email == "maksvel.fabb@gmail.com") or (u_role == 'Супер Адмін')
 
-    # --- БІЧНА ПАНЕЛЬ (КНОПКИ НАВІГАЦІЇ) ---
+    # --- БІЧНА ПАНЕЛЬ ---
     with st.sidebar:
         st.title("🏭 GETMANN Pro")
-        st.markdown(f"👤 **{u_name}** \n({u_role})")
+        st.markdown(f"👤 **{u_name}**")
         st.divider()
 
         # Кнопка: Журнал замовлень
@@ -58,36 +61,38 @@ def main():
             st.session_state.page = "create"
             st.rerun()
 
-        # Кнопка: Адмін-панель (тільки для вас)
+        # НОВА КНОПКА: Матеріал
+        if st.button("🏗️ Матеріал", width="stretch",
+                     type="primary" if st.session_state.page == "material" else "secondary"):
+            st.session_state.page = "material"
+            st.rerun()
+
+        # НОВА КНОПКА: Креслення
+        if st.button("📐 Креслення", width="stretch",
+                     type="primary" if st.session_state.page == "drawings" else "secondary"):
+            st.session_state.page = "drawings"
+            st.rerun()
+
+        # Кнопка: Адмін-панель
         if is_super_admin:
+            st.divider()
             if st.button("⚙️ Адмін-панель", width="stretch",
                          type="primary" if st.session_state.page == "admin" else "secondary"):
                 st.session_state.page = "admin"
                 st.rerun()
 
         st.divider()
-        # Кнопка виходу
         if st.button("🚪 Вийти", width="stretch"):
             logout()
 
-    # --- ВІДОБРАЖЕННЯ МОДУЛІВ В ОСНОВНІЙ ЧАСТИНІ ---
+    # --- ВІДОБРАЖЕННЯ МОДУЛІВ ---
     
     if st.session_state.page == "view":
         st.title("📦 Журнал замовлень")
         show_order_cards()
 
     elif st.session_state.page == "create":
-        st.title("➕ Створення нового замовлення")
+        st.title("➕ Нове замовлення")
         show_create_order()
 
-    elif st.session_state.page == "admin":
-        if is_super_admin:
-            st.title("⚙️ Адміністрування системи")
-            show_admin_panel()
-        else:
-            st.error("Доступ обмежено.")
-            st.session_state.page = "view"
-            st.rerun()
-
-if __name__ == "__main__":
-    main()
+    elif st.session_
