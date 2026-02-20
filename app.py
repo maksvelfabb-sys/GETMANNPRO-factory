@@ -12,12 +12,11 @@ st.set_page_config(
 try:
     from modules.auth import check_auth, login_screen, logout
     from modules.styles import apply_custom_styles
-  from modules.db.view import show_orders_journal
+    # Імпортуємо нову функцію журналу
+    from modules.db.view import show_orders_journal 
     from modules.db.create import show_create_order
     from modules.admin_module import show_admin_panel
     from modules.drawings import show_drawings_catalog
-    # Сюди додасте, коли створите файл:
-    # from modules.materials import show_materials 
 except ImportError as e:
     st.error(f"❌ Помилка імпорту модулів: {e}")
     st.stop()
@@ -34,7 +33,7 @@ def main():
     if 'page' not in st.session_state:
         st.session_state.page = "view"
 
-    # Дані користувача з auth.py
+    # Дані користувача
     user_data = st.session_state.get('auth', {})
     u_email = str(user_data.get('email', '')).lower().strip()
     u_role = str(user_data.get('role', '')).strip()
@@ -81,11 +80,11 @@ def main():
         if st.button("🚪 Вийти", use_container_width=True):
             logout()
 
-    # --- ВІДОБРАЖЕННЯ МОДУЛІВ (ЛОГІКА ПЕРЕМИКАННЯ) ---
+    # --- ВІДОБРАЖЕННЯ МОДУЛІВ ---
     
     if st.session_state.page == "view":
-        st.title("📦 Журнал замовлень")
-        show_order_cards()
+        # ВИПРАВЛЕНО: Викликаємо правильну функцію з view.py
+        show_orders_journal() 
 
     elif st.session_state.page == "create":
         st.title("➕ Нове замовлення")
@@ -94,10 +93,9 @@ def main():
     elif st.session_state.page == "material":
         st.title("🏗️ Склад матеріалів")
         st.info("Розділ у розробці. Тут буде облік металу та комплектуючих.")
-        # show_materials() 
 
     elif st.session_state.page == "drawings":
-        st.title("📐 Каталог креслень")
+        # Заголовок вже є всередині модуля, але можна залишити і тут
         show_drawings_catalog()
 
     elif st.session_state.page == "admin":
@@ -111,4 +109,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
