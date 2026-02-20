@@ -12,7 +12,7 @@ st.set_page_config(
 try:
     from modules.auth import check_auth, login_screen, logout
     from modules.styles import apply_custom_styles
-    from modules.db.view import show_order_cards
+  from modules.db.view import show_orders_journal
     from modules.db.create import show_create_order
     from modules.admin_module import show_admin_panel
     from modules.drawings import show_drawings_catalog
@@ -111,3 +111,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
