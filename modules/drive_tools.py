@@ -9,8 +9,8 @@ from google.oauth2 import service_account
 USERS_CSV_ID = "1qwPXMqIwDATgIsYHo7us6yQgE-JyhT7f"
 ORDERS_CSV_ID = "1Ws7rL1uyWcYbLeXsmqmaijt98Gxo6k3i"
 ITEMS_CSV_ID = "1knqbYIrK6q_hyj1wkrqOUzIIZfL_ils1"
-# ID вашого файлу-реєстру імен креслень
-DRAWINGS_MAP_CSV_ID = "1SQyZ6OUk9xNBMvh98Ob4zw9LVaqWRtas" 
+DRAWINGS_FOLDER_ID = "1SQyZ6OUk9xNBMvh98Ob4zw9LVaqWRtas"
+DRAWINGS_MAP_CSV_ID = "1lrtzkrc3mKjdRC33dnveTY1so_PphyvZ" 
 
 def get_drive_service():
     try:
