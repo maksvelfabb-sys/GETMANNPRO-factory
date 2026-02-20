@@ -2,75 +2,89 @@ import streamlit as st
 import pandas as pd
 from modules.drive_tools import get_all_files_in_folder, load_drawing_map, save_drawing_map
 
-def show_drawings_catalog():
-    st.subheader("📁 Бібліотека креслень")
+def handle_save():
+    """Обробник автоматичного збереження при зміні даних у таблиці"""
+    # Отримуємо зміни з editor_key
+    if "drawings_editor" in st.session_state:
+        changes = st.session_state["drawings_editor"].get("edited_rows", {})
+        if changes:
+            # Завантажуємо поточну карту імен
+            current_map = load_drawing_map()
+            # Отримуємо поточний список файлів з сесії, щоб знайти file_id за індексом рядка
+            df = st.session_state["current_df"]
+            
+            for row_idx, updated_fields in changes.items():
+                if "Ім'я (опис)" in updated_fields:
+                    file_id = df.iloc[int(row_idx)]["file_id"]
+                    new_name = updated_fields["Ім'я (опис)"]
+                    current_map[str(file_id)] = str(new_name)
+            
+            save_drawing_map(current_map)
 
-    # 1. Отримуємо актуальні файли з Drive та наш реєстр "Імен"
+def show_drawings_catalog():
+    st.subheader("📐 Реєстр технічної документації")
+
+    # 1. Отримуємо дані
     all_files = get_all_files_in_folder()
-    drawing_names_map = load_drawing_map() # Тут ми зберігаємо {file_id: "Довільне Ім'я"}
+    drawing_names_map = load_drawing_map()
 
     if not all_files:
-        st.info("В папці на Drive поки немає файлів.")
+        st.info("Папка Drive порожня або ID папки вказано невірно.")
         return
 
-    # 2. Формуємо дані
+    # 2. Формуємо DataFrame
     data = []
     for f in all_files:
-        # Артикул — це назва файлу без розширення (напр. "GMN-10.pdf" -> "GMN-10")
+        # Артикул — це назва файлу, яку неможливо змінити тут
         sku = f['name'].rsplit('.', 1)[0]
-        # Ім'я беремо з карти, якщо воно там є
-        custom_name = drawing_names_map.get(f['id'], "")
-        
         data.append({
-            "Артикул (Файл)": sku,
-            "Додаткове Ім'я": custom_name,
-            "Посилання": f['webViewLink'],
-            "file_id": f['id'],
-            "full_name": f['name']
+            "Ім'я (опис)": drawing_names_map.get(f['id'], ""),
+            "Артикул": sku,
+            "Файл": f.get('webViewLink', '#'),
+            "file_id": f['id']
         })
 
     df = pd.DataFrame(data)
+    # Зберігаємо в session_state для обробника handle_save
+    st.session_state["current_df"] = df
 
-    # 3. Інтерфейс
-    search = st.text_input("🔎 Швидкий пошук (за Артикулом або Іменем)", placeholder="Введіть частину назви...")
+    # 3. Пошук
+    search = st.text_input("🔎 Пошук за артикулом або описом", placeholder="Введіть SKU...")
     
     if search:
         df_display = df[
-            df["Артикул (Файл)"].str.contains(search, case=False) | 
-            df["Додаткове Ім'я"].str.contains(search, case=False)
+            df["Артикул"].str.contains(search, case=False) | 
+            df["Ім'я (опис)"].str.contains(search, case=False)
         ]
     else:
         df_display = df
 
-    # 4. Таблиця з можливістю редагування "Імені"
-    st.write("💡 Ви можете вписати 'Ім'я' для уточнення, але це не обов'язково.")
+    # 4. Основна таблиця
+    st.write("📝 *Для зміни імені просто відредагуйте клітинку та натисніть Enter*")
     
-    edited_df = st.data_editor(
+    st.data_editor(
         df_display,
         column_config={
-            "Артикул (Файл)": st.column_config.TextColumn("Артикул", disabled=True),
-            "Додаткове Ім'я": st.column_config.TextColumn("Присвоїти ім'я (опц.)", help="Наприклад: 'Кронштейн посилений'"),
-            "Посилання": st.column_config.LinkColumn("Креслення", display_text="🔗 Відкрити"),
-            "file_id": None,
-            "full_name": None
+            "Ім'я (опис)": st.column_config.TextColumn(
+                "Ім'я (опис)", 
+                help="Натисніть для редагування",
+                width="large"
+            ),
+            "Артикул": st.column_config.TextColumn(
+                "Артикул (File Name)", 
+                disabled=True, # Змінити неможливо
+                width="medium"
+            ),
+            "Файл": st.column_config.LinkColumn(
+                "Креслення", 
+                display_text="🔗 Відкрити"
+            ),
+            "file_id": None # Технічне поле приховано
         },
         use_container_width=True,
         hide_index=True,
-        key="drawings_editor"
+        key="drawings_editor",
+        on_change=handle_save # Викликає збереження автоматично
     )
 
-    # 5. Кнопка збереження змін в "Іменах"
-    if st.button("💾 Зберегти зміни в іменах"):
-        # Оновлюємо тільки колонку Імен
-        new_names = dict(zip(edited_df["file_id"], edited_df["Додаткове Ім'я"]))
-        
-        # Завантажуємо повну карту (щоб не затерти те, що не потрапило в пошук)
-        current_full_map = load_drawing_map()
-        current_full_map.update(new_names)
-        
-        if save_drawing_map(current_full_map):
-            st.success("Імена оновлені!")
-            st.rerun()
-
-    st.divider()
-    st.caption(f"Всього креслень у папці: {len(df)}")
+    st.caption(f"Синхронізовано файлів: {len(df)}")
