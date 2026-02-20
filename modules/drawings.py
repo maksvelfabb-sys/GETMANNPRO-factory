@@ -1,29 +1,42 @@
 import streamlit as st
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
+from modules.drive_tools import get_file_link_by_name
 
-FOLDER_DRAWINGS_ID = "1SQyZ6OUk9xNBMvh98Ob4zw9LVaqWRtas"
+def render_drawings_list(skus):
+    """
+    Універсальна функція для відображення списку креслень за списком артикулів.
+    Використовується і в каталозі, і всередині замовлень.
+    """
+    if not skus:
+        st.caption("Артикули не вказані — креслення відсутні.")
+        return
 
-def get_drive_service():
-    if "gcp_service_account" in st.secrets:
-        try:
-            info = dict(st.secrets["gcp_service_account"])
-            info["private_key"] = info["private_key"].replace("\\n", "\n").strip()
-            creds = service_account.Credentials.from_service_account_info(info)
-            return build('drive', 'v3', credentials=creds)
-        except Exception as e:
-            st.error(f"Помилка авторизації Google Drive: {e}")
-            return None
-    return None
+    # Очищуємо список від порожніх значень
+    active_skus = [str(s).strip() for s in skus if str(s).strip()]
+    
+    if not active_skus:
+        st.caption("Немає коректних артикулів для пошуку.")
+        return
 
-def get_pdf_link(art):
-    if not art or str(art).strip() in ["", "nan", "-"]: return None
-    service = get_drive_service()
-    if not service: return None
-    try:
-        q = f"'{FOLDER_DRAWINGS_ID}' in parents and name contains '{str(art).strip()}' and trashed = false"
-        res = service.files().list(q=q, fields="files(webViewLink)").execute()
-        files = res.get('files', [])
-        return files[0]['webViewLink'] if files else None
-    except:
-        return None
+    # Відображення кнопками в ряд (по 4 у рядку)
+    cols = st.columns(4)
+    for i, sku in enumerate(active_skus):
+        link = get_file_link_by_name(sku)
+        with cols[i % 4]:
+            if link:
+                st.link_button(f"📄 {sku}", link, width="stretch", help=f"Відкрити креслення для {sku}")
+            else:
+                st.button(f"❌ {sku}", disabled=True, width="stretch", help="Файл не знайдено на Drive")
+
+def show_drawings_catalog():
+    """
+    Функція для окремої сторінки 'Креслення' у бічній панелі.
+    """
+    st.markdown("### 🔍 Глобальний пошук креслень")
+    search_sku = st.text_input("Введіть артикул (SKU) для швидкого пошуку", placeholder="Наприклад: GMN-102")
+    
+    if search_sku:
+        st.write(f"Результат для: **{search_sku}**")
+        render_drawings_list([search_sku])
+    
+    st.divider()
+    st.info("💡 Підказка: Креслення шукаються автоматично в папці на Google Drive за назвою файлу, яка збігається з Артикулом.")
