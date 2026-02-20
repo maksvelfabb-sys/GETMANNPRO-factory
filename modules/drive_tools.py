@@ -1,66 +1,52 @@
-import streamlit as st
-import pandas as pd
-import io
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
-from google.oauth2 import service_account
+# Додайте новий ID до списку конфігурацій (створіть порожній CSV на Drive і вставте сюди його ID)
+DRAWINGS_MAP_CSV_ID = "ВАШ_ID_ФАЙЛУ_DRAWINGS_MAP" # Замініть на реальний ID
 
-# ID файлів
-USERS_CSV_ID = "1qwPXMqIwDATgIsYHo7us6yQgE-JyhT7f"
-ORDERS_CSV_ID = "1Ws7rL1uyWcYbLeXsmqmaijt98Gxo6k3i"
-ITEMS_CSV_ID = "1knqbYIrK6q_hyj1wkrqOUzIIZfL_ils1"
-
-def get_drive_service():
+def get_all_drawings_in_folder(folder_id="ID_ВАШОЇ_ПАПКИ_З_КРЕСЛЕННЯМИ"):
+    """Отримує список усіх файлів з конкретної папки Drive"""
     try:
-        if "gcp_service_account" not in st.secrets:
-            st.error("Секрети не знайдені!")
+        service = get_drive_service()
+        if not service: return []
+        
+        # Шукаємо файли тільки в конкретній папці
+        query = f"'{folder_id}' in parents and trashed = false"
+        results = service.files().list(
+            q=query, 
+            fields="files(id, name, webViewLink)",
+            pageSize=1000
+        ).execute()
+        return results.get('files', [])
+    except Exception as e:
+        st.error(f"Помилка отримання списку файлів: {e}")
+        return []
+
+def load_drawing_map():
+    """Завантажує словник відповідностей {file_id: custom_name}"""
+    df = load_csv(DRAWINGS_MAP_CSV_ID)
+    if df.empty:
+        return {}
+    # Перетворюємо DataFrame у словник для швидкого пошуку
+    return dict(zip(df['file_id'].astype(str), df['custom_name'].astype(str)))
+
+def save_drawing_map(mapping_dict):
+    """Зберігає словник відповідностей у CSV на Drive"""
+    df = pd.DataFrame(list(mapping_dict.items()), columns=['file_id', 'custom_name'])
+    return save_csv(DRAWINGS_MAP_CSV_ID, df)
+
+def get_link_by_mapped_name(custom_name):
+    """Шукає посилання на файл за його ПРИСВОЄНИМ іменем"""
+    mapping = load_drawing_map()
+    # Шукаємо file_id, якому відповідає custom_name
+    file_id = None
+    for fid, name in mapping.items():
+        if name.lower().strip() == str(custom_name).lower().strip():
+            file_id = fid
+            break
+    
+    if file_id:
+        try:
+            service = get_drive_service()
+            file = service.files().get(fileId=file_id, fields="webViewLink").execute()
+            return file.get('webViewLink')
+        except:
             return None
-        creds_info = st.secrets["gcp_service_account"]
-        creds = service_account.Credentials.from_service_account_info(creds_info)
-        return build('drive', 'v3', credentials=creds)
-    except Exception as e:
-        st.error(f"Помилка Drive: {e}")
-        return None
-
-def load_csv(file_id):
-    try:
-        service = get_drive_service()
-        if not service: return pd.DataFrame()
-        request = service.files().get_media(fileId=file_id)
-        fh = io.BytesIO()
-        downloader = MediaIoBaseDownload(fh, request)
-        done = False
-        while done is False:
-            status, done = downloader.next_chunk()
-        fh.seek(0)
-        return pd.read_csv(fh)
-    except Exception as e:
-        st.error(f"Помилка завантаження: {e}")
-        return pd.DataFrame()
-
-def save_csv(file_id, df):
-    try:
-        service = get_drive_service()
-        if not service: return False
-        csv_string = df.to_csv(index=False)
-        fh = io.BytesIO(csv_string.encode('utf-8'))
-        media = MediaIoBaseUpload(fh, mimetype='text/csv', resumable=True)
-        service.files().update(fileId=file_id, media_body=media).execute()
-        return True
-    except Exception as e:
-        st.error(f"Помилка запису: {e}")
-        return False
-
-def get_file_link_by_name(file_name):
-    """Шукає файл на Drive за назвою та повертає посилання"""
-    if not file_name or str(file_name).strip() == "":
-        return None
-    try:
-        service = get_drive_service()
-        if not service: return None
-        query = f"name contains '{str(file_name).strip()}' and trashed = false"
-        results = service.files().list(q=query, fields="files(id, name, webViewLink)", pageSize=1).execute()
-        files = results.get('files', [])
-        return files[0]['webViewLink'] if files else None
-    except Exception:
-        return None
+    return None
