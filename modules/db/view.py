@@ -1,102 +1,103 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from modules.drive_tools import load_csv, save_csv, ORDERS_CSV_ID
+from modules.drive_tools import load_csv, save_csv, ORDERS_CSV_ID, get_file_link_by_name
 
 def show_orders_journal():
-    # 1. Завантаження та підготовка даних
+    st.subheader("📋 Журнал замовлень")
+
+    # 1. Завантаження даних
     df = load_csv(ORDERS_CSV_ID)
     
     if df.empty:
-        st.info("Замовлень поки немає. Створіть перше замовлення!")
+        st.info("Замовлень не знайдено.")
         return
 
-    # Очищення даних
-    df['Кількість'] = pd.to_numeric(df['Кількість'], errors='coerce').fillna(0)
+    # Підготовка типів даних
+    df['Кількість'] = pd.to_numeric(df['Кількість'], errors='coerce').fillna(1)
     df['Ціна за од.'] = pd.to_numeric(df['Ціна за од.'], errors='coerce').fillna(0)
     df['Сума'] = df['Кількість'] * df['Ціна за од.']
-    df = df.fillna("")
+    
+    # Додаємо номер замовлення, якщо його немає (індекс + 1)
+    if 'Номер' not in df.columns:
+        df.insert(0, 'Номер', range(1, len(df) + 1))
 
-    # 2. Фільтри та Пошук (у верхній панелі)
-    col_s1, col_s2 = st.columns([2, 1])
-    with col_s1:
-        search = st.text_input("🔎 Пошук замовника або товару", placeholder="Кого шукаємо?")
-    with col_s2:
-        status_list = ["Всі"] + list(df['Статус'].unique())
-        status_filter = st.selectbox("Фільтр статусу", status_list)
-
-    # Фільтрація даних
-    filtered_df = df.copy()
+    # 2. Фільтрація (Пошук)
+    search = st.text_input("🔍 Пошук замовлення (ім'я, товар, номер)", placeholder="Введіть дані...")
     if search:
-        filtered_df = filtered_df[filtered_df.astype(str).apply(lambda x: x.str.contains(search, case=False)).any(axis=1)]
-    if status_filter != "Всі":
-        filtered_df = filtered_df[filtered_df['Статус'] == status_filter]
+        df = df[df.astype(str).apply(lambda x: x.str.contains(search, case=False)).any(axis=1)]
 
     # 3. Відображення карток
-    st.write(f"Знайдено замовлень: **{len(filtered_df)}**")
-    st.divider()
+    # Розвертаємо список, щоб нові замовлення були зверху
+    for index, row in df.iloc[::-1].iterrows():
+        
+        # Колір статусу для візуалізації
+        status_emoji = {
+            "Прийняте": "🆕",
+            "У роботі": "🛠️",
+            "Виконано": "✅"
+        }.get(row.get('Статус', 'Прийняте'), "📄")
 
-    # Створюємо сітку карток (по 2 в ряд на широкому екрані)
-    for index, row in filtered_df.iterrows():
-        # Визначаємо колір статусу
-        status_colors = {
-            "Новий": "🔵",
-            "В роботі": "🟡",
-            "Виконано": "🟢",
-            "Очікує оплати": "🟠",
-            "Скасовано": "🔴"
-        }
-        icon = status_colors.get(row['Статус'], "⚪")
-
-        # Сама картка
-        with st.container(border=True):
-            c1, c2, c3 = st.columns([2, 2, 1])
+        # --- ШАПКА КАРТКИ (st.expander) ---
+        header = f"{status_emoji} №{row['Номер']} | {row['Дата']} | {row['Замовник']} | {row['Сума']:,} ₴"
+        
+        with st.expander(header):
+            # Внутрішня частина картки
+            col1, col2 = st.columns(2)
             
-            with c1:
-                st.markdown(f"### {icon} {row['Замовник']}")
-                st.caption(f"📅 Дата: {row['Дата']}")
-                st.markdown(f"**Товар:** {row['Товар']}")
-            
-            with c2:
-                st.write(f"**Кількість:** {int(row['Кількість'])} шт.")
-                st.write(f"**Ціна:** {row['Ціна за од.']:,} ₴")
-                st.markdown(f"#### Сума: {row['Сума']:,} ₴")
-            
-            with c3:
-                # Кнопка для відкриття редагування конкретного замовлення
-                if st.button("📝 Редагувати", key=f"edit_{index}"):
-                    edit_order_modal(index, row, df)
-
-            if row['Коментар менеджера']:
-                st.info(f"💬 {row['Коментар менеджера']}")
-
-# Функція для редагування (викликається всередині картки)
-def edit_order_modal(index, row, full_df):
-    with st.expander(f"Змінити замовлення: {row['Замовник']}", expanded=True):
-        with st.form(key=f"form_{index}"):
-            new_customer = st.text_input("Замовник", value=row['Замовник'])
-            new_item = st.text_input("Товар", value=row['Товар'])
-            
-            col_a, col_b = st.columns(2)
-            with col_a:
-                new_qty = st.number_input("Кількість", value=float(row['Кількість']), step=1.0)
-                new_status = st.selectbox("Статус", 
-                                        ["Новий", "В роботі", "Виконано", "Очікує оплати", "Скасовано"],
-                                        index=["Новий", "В роботі", "Виконано", "Очікує оплати", "Скасовано"].index(row['Статус']) if row['Статус'] in ["Новий", "В роботі", "Виконано", "Очікує оплати", "Скасовано"] else 0)
-            with col_b:
-                new_price = st.number_input("Ціна за од.", value=float(row['Ціна за од.']))
-                new_comment = st.text_area("Коментар менеджера", value=row['Коментар менеджера'])
-
-            if st.form_submit_button("💾 Оновити дані замовлення"):
-                # Оновлюємо рядок у великому DataFrame
-                full_df.at[index, 'Замовник'] = new_customer
-                full_df.at[index, 'Товар'] = new_item
-                full_df.at[index, 'Кількість'] = new_qty
-                full_df.at[index, 'Ціна за од.'] = new_price
-                full_df.at[index, 'Статус'] = new_status
-                full_df.at[index, 'Коментар менеджера'] = new_comment
-                full_df.at[index, 'Сума'] = new_qty * new_price
+            with col1:
+                st.markdown(f"**🔢 Номер замовлення:** {row['Номер']}")
+                st.markdown(f"**📅 Дата створення:** {row['Дата']}")
+                st.markdown(f"**👤 Клієнт:** {row['Замовник']}")
                 
-                if save_csv(ORDERS_CSV_ID, full_df):
-                    st.success("Зміни збережено!")
+                # --- ВИБІР СТАТУСУ ---
+                current_status = row.get('Статус', 'Прийняте')
+                status_options = ["Прийняте", "У роботі", "Виконано"]
+                try:
+                    status_idx = status_options.index(current_status)
+                except:
+                    status_idx = 0
+                
+                new_status = st.selectbox(
+                    "Змінити статус", 
+                    status_options, 
+                    index=status_idx, 
+                    key=f"status_{index}"
+                )
+                
+                if new_status != current_status:
+                    df.at[index, 'Статус'] = new_status
+                    save_csv(ORDERS_CSV_ID, df)
                     st.rerun()
+
+            with col2:
+                st.markdown(f"**📦 Товар:** {row.get('Товар', 'Не вказано')}")
+                sku = str(row.get('Артикул', '')).strip()
+                st.markdown(f"**🆔 Артикул:** {sku}")
+                st.markdown(f"**💰 Ціна за од.:** {row['Ціна за од.']:,} ₴")
+                st.markdown(f"**🔢 Кількість:** {row['Кількість']}")
+                st.markdown(f"### Разом: {row['Суma'] if 'Суma' in row else row['Сума']:,} ₴")
+
+            # --- РОБОТА З АРТИКУЛОМ ---
+            if sku:
+                st.divider()
+                st.markdown(f"🔍 **Перевірка бази креслень:**")
+                link = get_file_link_by_name(sku)
+                if link:
+                    st.success(f"Креслення для артикула {sku} знайдено!")
+                    st.link_button(f"📄 Відкрити креслення {sku}", link)
+                else:
+                    st.warning(f"Креслення для {sku} не знайдено в папці.")
+
+            # --- ДОДАТКОВІ ДІЇ ---
+            st.divider()
+            if st.button("🗑️ Видалити замовлення", key=f"del_{index}"):
+                df = df.drop(index)
+                save_csv(ORDERS_CSV_ID, df)
+                st.rerun()
+
+    # Кнопка для додавання нового замовлення прямо тут (якщо потрібно)
+    st.divider()
+    if st.button("➕ Додати нове замовлення"):
+        st.session_state.page = "create"
+        st.rerun()
