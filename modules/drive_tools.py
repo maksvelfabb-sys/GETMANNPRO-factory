@@ -10,7 +10,7 @@ USERS_CSV_ID = "1qwPXMqIwDATgIsYHo7us6yQgE-JyhT7f"
 ORDERS_CSV_ID = "1Ws7rL1uyWcYbLeXsmqmaijt98Gxo6k3i"
 ITEMS_CSV_ID = "1knqbYIrK6q_hyj1wkrqOUzIIZfL_ils1"
 DRAWINGS_FOLDER_ID = "1SQyZ6OUk9xNBMvh98Ob4zw9LVaqWRtas"
-DRAWINGS_MAP_CSV_ID = "1lrtzkrc3mKjdRC33dnveTY1so_PphyvZ" 
+DRAWINGS_MAP_CSV_ID = "1puJWVCJtE5ElWCrbEJH04-S98OfwVWon" 
 
 def get_drive_service():
     try:
