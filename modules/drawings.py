@@ -1,59 +1,20 @@
 import streamlit as st
 from modules.drive_tools import get_file_link_by_name
 
-def render_drawings_list(skus):
-    """
-    Універсальна функція для відображення кнопок креслень.
-    Використовується в картках замовлень та в каталозі.
-    """
-    if not skus:
-        st.caption("Артикули не вказані — креслення відсутні.")
-        return
-
-    # Очищуємо список від порожніх значень та дублікатів
-    active_skus = sorted(list(set(str(s).strip() for s in skus if str(s).strip())))
-    
-    if not active_skus:
-        st.caption("Немає коректних артикулів для пошуку.")
-        return
-
-    # Відображення кнопками в ряд (по 4 у рядку)
-    cols = st.columns(4)
-    for i, sku in enumerate(active_skus):
-        link = get_file_link_by_name(sku)
-        with cols[i % 4]:
-            if link:
-                st.link_button(f"📄 {sku}", link, use_container_width=True, help=f"Відкрити файл для {sku}")
-            else:
-                # Використовуємо caption або заблоковану кнопку для відсутніх файлів
-                st.button(f"❌ {sku}", disabled=True, use_container_width=True, help="Файл не знайдено на Drive")
-
 def show_drawings_catalog():
-    """
-    Основна функція модуля для відображення цілої сторінки 'Креслення'.
-    """
-    st.markdown("### 🔍 Глобальний пошук креслень")
-    
-    with st.container(border=True):
-        search_sku = st.text_input(
-            "Введіть артикул (SKU) для швидкого пошуку", 
-            placeholder="Наприклад: GMN-102"
-        ).strip()
-        
-        if search_sku:
-            st.write(f"Результат для: **{search_sku}**")
-            render_drawings_list([search_sku])
-            
-            # Додаткова інфо-панель, якщо файл знайдено
-            link = get_file_link_by_name(search_sku)
-            if link:
-                st.info("💡 Файл знайдено. Натисніть на кнопку вище, щоб відкрити його в новій вкладці.")
-    
-    st.divider()
-    
-    # Інструкція для персоналу
-    with st.expander("ℹ️ Як працює система креслень?"):
-        st.markdown("""
-        1. **Завантаження**: Всі PDF/JPG креслення мають бути в папці 'Drawings' на Google Drive.
-        2. **Іменування**: Назва файлу повинна **точно** збігатися з SKU (наприклад, `GMN-102.pdf`).
-        3. **Оновлення**: Якщо ви додали файл, а він не з'явився — зачекайте 1-2 хвилини (
+    st.markdown("### 🔍 Пошук креслень")
+    search_sku = st.text_input("Введіть SKU", placeholder="GMN-01")
+    if search_sku:
+        link = get_file_link_by_name(search_sku)
+        if link:
+            st.success(f"Креслення знайдено")
+            st.link_button(f"Відкрити {search_sku}", link, use_container_width=True)
+        else:
+            st.error("Файл не знайдено")
+
+def render_drawings_list(skus):
+    if not skus: return
+    for sku in skus:
+        link = get_file_link_by_name(str(sku))
+        if link:
+            st.link_button(f"📄 {sku}", link)
