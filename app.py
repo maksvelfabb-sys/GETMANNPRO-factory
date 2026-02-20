@@ -15,6 +15,7 @@ try:
     from modules.db.view import show_order_cards
     from modules.db.create import show_create_order
     from modules.admin_module import show_admin_panel
+    from modules.drawings import show_drawings_catalog
     # Припускаємо, що ці функції існують або будуть створені в цих модулях:
     # from modules.materials import show_materials
     # from modules.drawings import show_drawings_catalog
@@ -100,10 +101,10 @@ def main():
         st.info("Розділ у розробці або підключіть функцію show_materials()")
         # show_materials() 
 
-    elif st.session_state.page == "drawings":
+elif st.session_state.page == "drawings":
         st.title("📐 Каталог креслень")
-        st.info("Розділ у розробці або підключіть функцію show_drawings_catalog()")
-        # show_drawings_catalog()
+        show_drawings_catalog()
+    
 
     elif st.session_state.page == "admin":
         if is_super_admin:
@@ -116,3 +117,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
