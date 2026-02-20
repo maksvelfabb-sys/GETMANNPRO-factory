@@ -4,83 +4,99 @@ from datetime import datetime
 from modules.drive_tools import load_csv, save_csv, ORDERS_CSV_ID
 
 def show_orders_journal():
-    st.subheader("📋 Журнал замовлень")
-
-    # 1. Завантаження
+    # 1. Завантаження та підготовка даних
     df = load_csv(ORDERS_CSV_ID)
     
-    columns_list = ["Дата", "Замовник", "Товар", "Кількість", "Ціна за од.", "Сума", "Статус", "Коментар менеджера"]
+    if df.empty:
+        st.info("Замовлень поки немає. Створіть перше замовлення!")
+        return
 
-    if df.empty or len(df.columns) < 2:
-        df = pd.DataFrame(columns=columns_list)
-        save_csv(ORDERS_CSV_ID, df)
-        st.rerun()
+    # Очищення даних
+    df['Кількість'] = pd.to_numeric(df['Кількість'], errors='coerce').fillna(0)
+    df['Ціна за од.'] = pd.to_numeric(df['Ціна за од.'], errors='coerce').fillna(0)
+    df['Сума'] = df['Кількість'] * df['Ціна за од.']
+    df = df.fillna("")
 
-    # --- ЖОРСТКА ПЕРЕВІРКА ТИПІВ (Щоб уникнути StreamlitAPIException) ---
-    for col in columns_list:
-        if col not in df.columns:
-            df[col] = ""
+    # 2. Фільтри та Пошук (у верхній панелі)
+    col_s1, col_s2 = st.columns([2, 1])
+    with col_s1:
+        search = st.text_input("🔎 Пошук замовника або товару", placeholder="Кого шукаємо?")
+    with col_s2:
+        status_list = ["Всі"] + list(df['Статус'].unique())
+        status_filter = st.selectbox("Фільтр статусу", status_list)
 
-    # Примусово перетворюємо на числа. Все, що не число -> перетворюється на 0.0
-    # Це гарантує, що в NumberColumn підуть ТІЛЬКИ float
-    df['Кількість'] = pd.to_numeric(df['Кількість'], errors='coerce').fillna(0.0).astype(float)
-    df['Ціна за од.'] = pd.to_numeric(df['Ціна за од.'], errors='coerce').fillna(0.0).astype(float)
-    df['Сума'] = pd.to_numeric(df['Сума'], errors='coerce').fillna(0.0).astype(float)
-    
-    # Текстові колонки примусово робимо рядками і замінюємо NaN на пусте місце
-    text_cols = ["Дата", "Замовник", "Товар", "Статус", "Коментар менеджера"]
-    for col in text_cols:
-        df[col] = df[col].astype(str).replace(['nan', 'None', 'NaN'], '')
-
-    # 2. Пошук
-    search = st.text_input("🔎 Пошук у журналі", placeholder="Введіть дані...")
-    
-    # Створюємо копію для відображення, щоб не псувати основний DF
-    df_display = df.copy()
-    
+    # Фільтрація даних
+    filtered_df = df.copy()
     if search:
-        mask = df_display.astype(str).apply(lambda x: x.str.contains(search, case=False)).any(axis=1)
-        df_display = df_display[mask]
+        filtered_df = filtered_df[filtered_df.astype(str).apply(lambda x: x.str.contains(search, case=False)).any(axis=1)]
+    if status_filter != "Всі":
+        filtered_df = filtered_df[filtered_df['Статус'] == status_filter]
 
-    # 3. Редактор (Змінено KEY, щоб скинути старий помилковий кеш)
-    edited_df = st.data_editor(
-        df_display,
-        column_config={
-            "Дата": st.column_config.TextColumn("Дата"),
-            "Замовник": st.column_config.TextColumn("Замовник"),
-            "Товар": st.column_config.TextColumn("Товар"),
-            "Кількість": st.column_config.NumberColumn("К-сть", format="%.0f"),
-            "Ціна за од.": st.column_config.NumberColumn("Ціна, ₴", format="%.2f"),
-            "Сума": st.column_config.NumberColumn("Всього, ₴", format="%.2f", disabled=True),
-            "Статус": st.column_config.SelectboxColumn(
-                "Статус", 
-                options=["Новий", "В роботі", "Виконано", "Очікує оплати", "Скасовано"]
-            ),
-            "Коментар менеджера": st.column_config.TextColumn("Коментар", width="large")
-        },
-        use_container_width=True,
-        hide_index=True,
-        num_rows="dynamic",
-        key="orders_editor_v5_final"  # Новий ключ
-    )
+    # 3. Відображення карток
+    st.write(f"Знайдено замовлень: **{len(filtered_df)}**")
+    st.divider()
 
-    # 4. Збереження
-    if st.button("💾 Зберегти зміни", type="primary"):
-        # Оновлюємо Суму перед записом
-        edited_df['Сума'] = edited_df['Кількість'] * edited_df['Ціна за од.']
-        
-        # Обробка нових дат
-        today = datetime.now().strftime("%d.%m.%Y")
-        edited_df["Дата"] = edited_df["Дата"].apply(lambda x: today if not str(x).strip() else x)
+    # Створюємо сітку карток (по 2 в ряд на широкому екрані)
+    for index, row in filtered_df.iterrows():
+        # Визначаємо колір статусу
+        status_colors = {
+            "Новий": "🔵",
+            "В роботі": "🟡",
+            "Виконано": "🟢",
+            "Очікує оплати": "🟠",
+            "Скасовано": "🔴"
+        }
+        icon = status_colors.get(row['Статус'], "⚪")
 
-        # Синхронізація змін (якщо був пошук)
-        if search:
-            # Використовуємо індекси для заміни лише відфільтрованих рядків
-            df.loc[edited_df.index, :] = edited_df
-            final_to_save = df
-        else:
-            final_to_save = edited_df
+        # Сама картка
+        with st.container(border=True):
+            c1, c2, c3 = st.columns([2, 2, 1])
+            
+            with c1:
+                st.markdown(f"### {icon} {row['Замовник']}")
+                st.caption(f"📅 Дата: {row['Дата']}")
+                st.markdown(f"**Товар:** {row['Товар']}")
+            
+            with c2:
+                st.write(f"**Кількість:** {int(row['Кількість'])} шт.")
+                st.write(f"**Ціна:** {row['Ціна за од.']:,} ₴")
+                st.markdown(f"#### Сума: {row['Сума']:,} ₴")
+            
+            with c3:
+                # Кнопка для відкриття редагування конкретного замовлення
+                if st.button("📝 Редагувати", key=f"edit_{index}"):
+                    edit_order_modal(index, row, df)
 
-        if save_csv(ORDERS_CSV_ID, final_to_save):
-            st.success("✅ Журнал оновлено!")
-            st.rerun()
+            if row['Коментар менеджера']:
+                st.info(f"💬 {row['Коментар менеджера']}")
+
+# Функція для редагування (викликається всередині картки)
+def edit_order_modal(index, row, full_df):
+    with st.expander(f"Змінити замовлення: {row['Замовник']}", expanded=True):
+        with st.form(key=f"form_{index}"):
+            new_customer = st.text_input("Замовник", value=row['Замовник'])
+            new_item = st.text_input("Товар", value=row['Товар'])
+            
+            col_a, col_b = st.columns(2)
+            with col_a:
+                new_qty = st.number_input("Кількість", value=float(row['Кількість']), step=1.0)
+                new_status = st.selectbox("Статус", 
+                                        ["Новий", "В роботі", "Виконано", "Очікує оплати", "Скасовано"],
+                                        index=["Новий", "В роботі", "Виконано", "Очікує оплати", "Скасовано"].index(row['Статус']) if row['Статус'] in ["Новий", "В роботі", "Виконано", "Очікує оплати", "Скасовано"] else 0)
+            with col_b:
+                new_price = st.number_input("Ціна за од.", value=float(row['Ціна за од.']))
+                new_comment = st.text_area("Коментар менеджера", value=row['Коментар менеджера'])
+
+            if st.form_submit_button("💾 Оновити дані замовлення"):
+                # Оновлюємо рядок у великому DataFrame
+                full_df.at[index, 'Замовник'] = new_customer
+                full_df.at[index, 'Товар'] = new_item
+                full_df.at[index, 'Кількість'] = new_qty
+                full_df.at[index, 'Ціна за од.'] = new_price
+                full_df.at[index, 'Статус'] = new_status
+                full_df.at[index, 'Коментар менеджера'] = new_comment
+                full_df.at[index, 'Сума'] = new_qty * new_price
+                
+                if save_csv(ORDERS_CSV_ID, full_df):
+                    st.success("Зміни збережено!")
+                    st.rerun()
