@@ -95,4 +95,24 @@ def main():
         st.title("➕ Нове замовлення")
         show_create_order()
 
-    elif st.session_
+    elif st.session_state.page == "material":
+        st.title("🏗️ Склад матеріалів")
+        st.info("Розділ у розробці або підключіть функцію show_materials()")
+        # show_materials() 
+
+    elif st.session_state.page == "drawings":
+        st.title("📐 Каталог креслень")
+        st.info("Розділ у розробці або підключіть функцію show_drawings_catalog()")
+        # show_drawings_catalog()
+
+    elif st.session_state.page == "admin":
+        if is_super_admin:
+            st.title("⚙️ Адміністрування")
+            show_admin_panel()
+        else:
+            st.error("Доступ обмежено.")
+            st.session_state.page = "view"
+            st.rerun()
+
+if __name__ == "__main__":
+    main()
