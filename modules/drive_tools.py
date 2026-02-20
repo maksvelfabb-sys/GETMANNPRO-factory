@@ -53,7 +53,7 @@ def save_csv(file_id, df):
         return False
 
 # --- ТА САМА ФУНКЦІЯ, ЯКОЇ НЕ ВИСТАЧАЛО ---
-def get_all_files_in_folder(folder_id="1_INSERT_YOUR_DRAWINGS_FOLDER_ID"):
+def get_all_files_in_folder(folder_id="1SQyZ6OUk9xNBMvh98Ob4zw9LVaqWRtas"):
     """Отримує список усіх файлів з папки на Drive"""
     try:
         service = get_drive_service()
