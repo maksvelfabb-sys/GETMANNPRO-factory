@@ -8,7 +8,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 2. Імпорт модулів
+# 2. Блок безпечного імпорту
 try:
     from modules.auth import check_auth, login_screen, logout
     from modules.styles import apply_custom_styles
@@ -16,9 +16,8 @@ try:
     from modules.db.create import show_create_order
     from modules.admin_module import show_admin_panel
     from modules.drawings import show_drawings_catalog
-    # Припускаємо, що ці функції існують або будуть створені в цих модулях:
-    # from modules.materials import show_materials
-    # from modules.drawings import show_drawings_catalog
+    # Сюди додасте, коли створите файл:
+    # from modules.materials import show_materials 
 except ImportError as e:
     st.error(f"❌ Помилка імпорту модулів: {e}")
     st.stop()
@@ -50,43 +49,39 @@ def main():
         st.markdown(f"👤 **{u_name}**")
         st.divider()
 
-        # Кнопка: Журнал замовлень
-        if st.button("📦 Журнал замовлень", width="stretch", 
+        # Кнопки навігації
+        if st.button("📦 Журнал замовлень", use_container_width=True, 
                      type="primary" if st.session_state.page == "view" else "secondary"):
             st.session_state.page = "view"
             st.rerun()
 
-        # Кнопка: Створити замовлення
-        if st.button("➕ Створити замовлення", width="stretch",
+        if st.button("➕ Створити замовлення", use_container_width=True,
                      type="primary" if st.session_state.page == "create" else "secondary"):
             st.session_state.page = "create"
             st.rerun()
 
-        # НОВА КНОПКА: Матеріал
-        if st.button("🏗️ Матеріал", width="stretch",
+        if st.button("🏗️ Матеріал", use_container_width=True,
                      type="primary" if st.session_state.page == "material" else "secondary"):
             st.session_state.page = "material"
             st.rerun()
 
-        # НОВА КНОПКА: Креслення
-        if st.button("📐 Креслення", width="stretch",
+        if st.button("📐 Креслення", use_container_width=True,
                      type="primary" if st.session_state.page == "drawings" else "secondary"):
             st.session_state.page = "drawings"
             st.rerun()
 
-        # Кнопка: Адмін-панель
         if is_super_admin:
             st.divider()
-            if st.button("⚙️ Адмін-панель", width="stretch",
+            if st.button("⚙️ Адмін-панель", use_container_width=True,
                          type="primary" if st.session_state.page == "admin" else "secondary"):
                 st.session_state.page = "admin"
                 st.rerun()
 
         st.divider()
-        if st.button("🚪 Вийти", width="stretch"):
+        if st.button("🚪 Вийти", use_container_width=True):
             logout()
 
-    # --- ВІДОБРАЖЕННЯ МОДУЛІВ ---
+    # --- ВІДОБРАЖЕННЯ МОДУЛІВ (ЛОГІКА ПЕРЕМИКАННЯ) ---
     
     if st.session_state.page == "view":
         st.title("📦 Журнал замовлень")
@@ -98,13 +93,12 @@ def main():
 
     elif st.session_state.page == "material":
         st.title("🏗️ Склад матеріалів")
-        st.info("Розділ у розробці або підключіть функцію show_materials()")
+        st.info("Розділ у розробці. Тут буде облік металу та комплектуючих.")
         # show_materials() 
 
-elif st.session_state.page == "drawings":
+    elif st.session_state.page == "drawings":
         st.title("📐 Каталог креслень")
         show_drawings_catalog()
-    
 
     elif st.session_state.page == "admin":
         if is_super_admin:
@@ -117,4 +111,3 @@ elif st.session_state.page == "drawings":
 
 if __name__ == "__main__":
     main()
-
