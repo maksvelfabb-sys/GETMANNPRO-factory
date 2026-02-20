@@ -10,7 +10,7 @@ USERS_CSV_ID = "1qwPXMqIwDATgIsYHo7us6yQgE-JyhT7f"
 ORDERS_CSV_ID = "1Ws7rL1uyWcYbLeXsmqmaijt98Gxo6k3i"
 ITEMS_CSV_ID = "1knqbYIrK6q_hyj1wkrqOUzIIZfL_ils1"
 # ID вашого файлу-реєстру імен креслень
-DRAWINGS_MAP_CSV_ID = "1X_J_INSERT_YOUR_MAP_CSV_ID_HERE" 
+DRAWINGS_MAP_CSV_ID = "1SQyZ6OUk9xNBMvh98Ob4zw9LVaqWRtas" 
 
 def get_drive_service():
     try:
