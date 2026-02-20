@@ -60,4 +60,35 @@ def get_all_files_in_folder(folder_id="1_INSERT_YOUR_DRAWINGS_FOLDER_ID"):
         if not service: return []
         
         # Запит: файли в конкретній папці, що не в кошику
-        query = f"'{folder_id}' in parents and trashed = false
+        query = f"'{folder_id}' in parents and trashed = false"
+        results = service.files().list(
+            q=query, 
+            fields="files(id, name, webViewLink)",
+            pageSize=1000
+        ).execute()
+        return results.get('files', [])
+    except Exception as e:
+        st.error(f"Помилка отримання списку файлів: {e}")
+        return []
+
+def get_file_link_by_name(file_name):
+    """Шукає файл за назвою (прямий пошук)"""
+    if not file_name: return None
+    try:
+        service = get_drive_service()
+        if not service: return None
+        query = f"name contains '{str(file_name).strip()}' and trashed = false"
+        results = service.files().list(q=query, fields="files(id, name, webViewLink)", pageSize=1).execute()
+        files = results.get('files', [])
+        return files[0]['webViewLink'] if files else None
+    except:
+        return None
+
+def load_drawing_map():
+    df = load_csv(DRAWINGS_MAP_CSV_ID)
+    if df.empty: return {}
+    return dict(zip(df['file_id'].astype(str), df['custom_name'].astype(str)))
+
+def save_drawing_map(mapping_dict):
+    df = pd.DataFrame(list(mapping_dict.items()), columns=['file_id', 'custom_name'])
+    return save_csv(DRAWINGS_MAP_CSV_ID, df)
